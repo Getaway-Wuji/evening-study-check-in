@@ -15,8 +15,7 @@ export default function RulesEditor({initial,onSave,busy,label,children,inheritT
   return <form className="form-stack" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);onSave({...display,open:String(f.get('open')||display.open),close:String(f.get('close')||display.close),studyStart:String(f.get('studyStart')||display.studyStart),photoEnabled:photo,noteEnabled:note},f);}}>
     {children}<div className="form-section-title"><Clock3 size={17}/>打卡时间{inheritTime&&<span className="optional">沿用默认时间</span>}</div>
     <div className="form-grid three">{([['open','开始打卡'],['studyStart','晚自习开始'],['close','打卡截止']] as const).map(([key,text])=><label key={key}>{text}<input name={key} required type="time" disabled={inheritTime} value={display[key]} onInput={e=>update(key,e.currentTarget.value)} onChange={e=>update(key,e.target.value)}/></label>)}</div>
-    {!inheritTime&&<div className="button-row"><Button type="button" onClick={()=>update('close','18:05')}>截止 18:05</Button><Button type="button" onClick={()=>update('close','18:15')}>延长至 18:15</Button></div>}
-    <p className="field-hint">截止时间包含该分钟，例如 18:05 截止，18:06 起不能提交。</p>
+    <p className="field-hint">时间按北京时间设置，可自行填写。截止时间包含对应分钟，下一分钟起不能提交。</p>
     <div className="form-section-title"><MapPin size={17}/>教室与定位范围</div>
     <label>教室或地点名称<input required maxLength={80} value={r.locationName} onChange={e=>update('locationName',e.target.value)} placeholder="例如：教学楼与教室编号"/></label>
     <div className="button-row point-actions"><Button type="button" busy={locating} onClick={capturePoint}><LocateFixed size={16}/>把当前位置设为打卡点</Button><a href="https://lbs.qq.com/getPoint/" target="_blank" rel="noreferrer" className="button">地图取点<ArrowUpRight size={14}/></a></div>
