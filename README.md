@@ -1,4 +1,4 @@
-# 晚习 班级晚自习管理
+# Evening Study Check-in · 晚自习打卡
 
 面向一个班级、39 名学生的微信公众号 H5 网站。学生从公众号菜单进入网页，打卡、申请请假和查看结果；管理员使用网页后台管理时间、地点、名册、审批和通知。部署目标为 Vercel，使用 Next.js 16 和 TypeScript。
 
@@ -19,6 +19,15 @@
 登录页入口为“登录”和“注册”。学生注册填写学号、姓名和密码；服务端将学号、姓名与管理员录入的班级名单匹配，符合才注册，同一学号只允许注册一次。姓名以后台名单为准，无需个人绑定码。管理员可编辑姓名和学号，并在核实本人后重置误注册账号，历史考勤继续保留。
 
 姓名与学号不是秘密，这种首次注册方式无法单独防止知情人抢先注册；后续登录由密码或已关联的微信身份验证，遇到误注册由管理员核实处理。
+
+## 当前部署
+
+- 私有源码仓库：[Getaway-Wuji/evening-study-check-in](https://github.com/Getaway-Wuji/evening-study-check-in)。`main` 分支更新后由 Vercel 自动构建生产版本。
+- 网站域名：[study.grace-spring.top](https://study.grace-spring.top)，备用地址：[evening-study-check-in.vercel.app](https://evening-study-check-in.vercel.app)。管理员通过 `/setup` 首次创建自己的账号，初始化凭证仅在 Vercel 生产环境配置。
+- 数据库使用 Turso Starter 免费方案，位于东京；应用函数也位于东京。附件使用香港区域的 Private Vercel Blob。班级、学期、教室及学生名单由管理员自行录入，部署不填充演示数据。
+- 域名注册商保留 NameSilo，DNS 托管于 Cloudflare Free。域名服务器为 `haley.ns.cloudflare.com`、`nitin.ns.cloudflare.com`，迁移保留原有毕业项目及其他记录。`study` 的 CNAME 采用 Vercel 指定的 `8e903560b8201262.vercel-dns-017.com`，当前使用 DNS only。
+- 普通 Cloudflare DNS 托管不等同于大陆专线或中国节点；国内实际访问效果须通过校园网络和手机网络实测。DNS only 配置遵循 [Vercel 的直连建议](https://vercel.com/kb/guide/can-i-use-a-proxy-on-top-of-my-vercel-deployment)，Cloudflare 的中国网络属于[单独的企业服务](https://developers.cloudflare.com/china-network/)。
+- 公众号授权和真实邮件发送仍需配置自己的凭据；网站部署完成不代表这两项已接通。云资源使用当前免费方案及其额度，未开通付费升级。
 
 ## 本机正式录入
 
@@ -65,13 +74,13 @@ npx tsx scripts/verify-local.ts
 ## Vercel 部署
 
 1. 将本目录作为项目根目录推送到自己的仓库，在 Vercel 导入，选择 Next.js。构建命令 `npm run build`，不做静态导出。
-2. 创建远程 libSQL 数据库（如 Turso），设置 `DATABASE_URL` 和 `DATABASE_AUTH_TOKEN`。Vercel 上禁止 `file:` 数据库，不能把临时文件当持久存储。
+2. 创建远程 libSQL 数据库（如 Turso），设置 `DATABASE_URL` 和 `DATABASE_AUTH_TOKEN`，或直接使用 Vercel Marketplace 自动配置的 `TURSO_DATABASE_URL`、`TURSO_AUTH_TOKEN`。Vercel 上禁止 `file:` 数据库，不能把临时文件当持久存储。
 3. 创建 **Private** 类型的 Vercel Blob 存储并连接项目，配置 `BLOB_READ_WRITE_TOKEN`。照片和证明直接上传到私有存储，避免超过函数请求体限制。
 4. 配置 `APP_URL=https://你的正式域名`、`DEMO_MODE=false` 及随机、保密的 `SETUP_TOKEN`。在 `/setup` 填入初始化凭证，自行创建管理员；已有管理员时不能再次初始化。也可在受控终端加载 `ADMIN_USERNAME`、至少 14 位的 `ADMIN_PASSWORD`，执行 `npx tsx scripts/setup.ts`，只创建管理员，不写入虚构名单。
 5. 登录后台录入本班 39 人的姓名与学号，填写真实学期起点，按星期和周次配置教室及已核对的定位点、半径，再核对并发布日期。
 6. 密钥只保存到平台环境变量和受保护的本地配置；不要提交 `.env.local`、数据库、上传文件或测试凭据。初始化后可从 Vercel 运行时环境移除 `SETUP_TOKEN` 和 `ADMIN_PASSWORD`。
 
-平台连接需要用户自有账号和凭据，本次未创建账号、购买服务或发布正式站点。正式库和文件服务的大陆网络可达性、备份及恢复应在上线前实测。
+平台连接使用项目所有者自己的账号和受保护的环境变量。正式库和文件服务的大陆网络可达性、备份及恢复应在开始收集真实班级数据前实测。
 
 ## 微信公众号接入
 
