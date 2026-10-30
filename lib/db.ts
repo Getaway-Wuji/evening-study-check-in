@@ -1,15 +1,15 @@
 import { createClient, type Client, type Transaction, type InValue } from '@libsql/client';
 import { defaultRules } from './domain';
 import { mkdirSync } from 'node:fs';
+import { databaseConfig } from './database-config';
 export type Connection = Client | Transaction;
 export type DBRow = Record<string, any>;
 const globalDB = globalThis as unknown as { studyDB?: Client; schemaReady?: Promise<void>; schemaVersion?:number; writeTail?:Promise<void> };
 export function db() {
   if (!globalDB.studyDB) {
-    const url = process.env.DATABASE_URL || 'file:./data/study.db';
-    if (process.env.VERCEL && !/^(libsql|https):/.test(url)) throw new Error('Vercel 需要配置远程 DATABASE_URL');
+    const config=databaseConfig(),{url}=config;
     if (url.startsWith('file:')) mkdirSync('data', { recursive: true });
-    globalDB.studyDB = createClient({ url, authToken: process.env.DATABASE_AUTH_TOKEN || undefined });
+    globalDB.studyDB = createClient(config);
   }
   return globalDB.studyDB;
 }
@@ -41,7 +41,7 @@ export async function ready() {
   await globalDB.schemaReady;
 }
 async function migrate() {
-  if((process.env.DATABASE_URL||'file:').startsWith('file:'))await db().executeMultiple('PRAGMA journal_mode=WAL;');
+  if(databaseConfig().url.startsWith('file:'))await db().executeMultiple('PRAGMA journal_mode=WAL;');
   await db().executeMultiple(`
     PRAGMA foreign_keys=ON;
     CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, name TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('student','admin')), password_hash TEXT, openid TEXT UNIQUE, active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL);
