@@ -11,9 +11,9 @@ assert.equal((await request('/api/auth/demo',{role:'admin'},'', 'https://untrust
 const admin=(await request('/api/auth/demo',{role:'admin'})).cookie;
 assert.ok(admin,'需要本地演示环境');
 let data=(await request('/api/data',undefined,admin)).value;
-assert.equal(data.demo,true,'只允许对本地虚构数据执行此验收');assert.equal(data.students.length,39);
-tests.push('后台展示完整的 39 人名单');
-const target=data.students.find((s:any)=>s.code==='202639');
+assert.equal(data.demo,true,'只允许对本地虚构数据执行此验收');assert.ok(data.students.length>1);assert.equal(data.studentCount,data.students.length);
+tests.push('后台按实际名单统计人数');
+const target=data.students.at(-1);assert.ok(target);
 assert.equal((await request('/api/actions',{action:'student.reset',data:{id:target.id}},admin)).status,200);
 const password='LocalTest-'+crypto.randomUUID();
 assert.equal((await request('/api/auth/register',{code:target.code,name:'不匹配的姓名',password})).status,400);
@@ -42,10 +42,10 @@ tests.push('请假与邮件任务可靠保存，未配置邮件不伪报发送�
 assert.equal((await request('/api/actions',{action:'leave.review',data:{id:created.value.id,decision:'approved',note:'演示验收通过'}},admin)).status,200);
 const updated=(await request('/api/data',undefined,student)).value;assert.equal(updated.leaves.find((l:any)=>l.id===created.value.id).items[0].status,'approved');tests.push('管理员审批实时同步给学生');
 assert.equal((await request('/api/actions',{action:'leave.review',data:{id:created.value.id,decision:'revoked',note:'验收结束撤销虚构申请'}},admin)).status,200);
-const outcomes=await Promise.all(Array.from({length:39},()=>request('/api/actions',{action:'checkin',data:{sessionId:session.id,...position,capturedAt:Date.now()}},student)));
+const outcomes=await Promise.all(Array.from({length:20},()=>request('/api/actions',{action:'checkin',data:{sessionId:session.id,...position,capturedAt:Date.now()}},student)));
 assert.ok(outcomes.every(r=>r.status===200),JSON.stringify(outcomes.map(r=>r.status)));
 assert.equal(new Set(outcomes.map(r=>r.value.id)).size,1);
-const final=(await request('/api/data',undefined,student)).value;assert.equal(final.checkins.filter((c:any)=>c.session_id===session.id).length,1);tests.push('39 次并发请求只保存一条签到');
+const final=(await request('/api/data',undefined,student)).value;assert.equal(final.checkins.filter((c:any)=>c.session_id===session.id).length,1);tests.push('多次并发请求只保存一条签到');
 const csv=await request(`/api/export?from=${session.date}&to=${session.date}`,undefined,admin);assert.equal(csv.status,200);assert.ok(csv.value.includes('姓名'));assert.equal((await request('/api/export',undefined,student)).status,403);tests.push('CSV 导出与导出权限');
 assert.equal((await request('/api/jobs/email')).status,401);tests.push('邮件任务入口需要独立授权');
 console.log(JSON.stringify({passed:tests.length,checks:tests},null,2));

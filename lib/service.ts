@@ -3,7 +3,9 @@ import { HTTPError } from './auth';
 import { ready, rows, one, run, transaction, audit, settings, rulesFor, businessNow, demoMode, db, type DBRow, type Connection } from './db';
 import { dateCN, validDate, addDays, period, timeMinutes, checkLocation, type Rules } from './domain';
 import { normalizeStudentCode } from './identity';
-import { rulesSchema } from './validation';
+import { rulesSchema,classCapacitySchema } from './validation';
+import { databaseConfig } from './database-config';
+import type { InStatement } from '@libsql/client';
 import { readTimetable,timetableCommand,resolveRecurringDate } from './timetable';
 export { rulesSchema } from './validation';
 
@@ -38,7 +40,8 @@ export async function bootstrap(user: DBRow) {
     readTimetable(db()),
   ]);
   const members=admin?await rows('SELECT * FROM session_members'):await rows('SELECT * FROM session_members WHERE user_id=?',[user.id]);
-  return { user,...timetable,recurring:admin?timetable.recurring:[],terms:admin?timetable.terms:timetable.terms.filter(t=>t.id===config.currentTermId),settings:admin?config:{className:config.className,capacity:config.capacity,locationConfigured:config.locationConfigured,currentTermId:config.currentTermId},
+  const studentCount=admin?students.length:Number((await one("SELECT COUNT(*) n FROM users WHERE role='student'")).n);
+  return { user,studentCount,...timetable,recurring:admin?timetable.recurring:[],terms:admin?timetable.terms:timetable.terms.filter(t=>t.id===config.currentTermId),settings:admin?config:{className:config.className,capacity:config.capacity,locationConfigured:config.locationConfigured,currentTermId:config.currentTermId},
     sessions:sessions.filter(s=>admin||members.some(m=>m.session_id===s.id)).map(s=>({...s,rules:JSON.parse(s.rules_json),rules_json:undefined}) as DBRow & {rules:Rules}),
     checkins:checkins.map(c=>({...c,photoIds:JSON.parse(c.photo_ids),rule_snapshot:undefined,source_coords:undefined}) as DBRow & {photoIds:string[]}),
     leaves:leaves.map(l=>({...l,proofIds:JSON.parse(l.proof_ids),items:items.filter(i=>i.leave_id===l.id)}) as DBRow & {proofIds:string[];items:(DBRow & {status:string})[]}),
@@ -46,7 +49,7 @@ export async function bootstrap(user: DBRow) {
     now:businessNow(),demo:demoMode(),integrations:admin?{
       wechat:!!(process.env.WECHAT_APP_ID&&process.env.WECHAT_APP_SECRET),
       email:!!(process.env.RESEND_API_KEY&&process.env.MAIL_FROM&&config.adminEmails?.length),
-      storage:!!process.env.BLOB_READ_WRITE_TOKEN,remoteDatabase:/^(libsql|https):/.test(process.env.DATABASE_URL||''),
+      storage:!!process.env.BLOB_READ_WRITE_TOKEN,remoteDatabase:/^(libsql|https):/.test(databaseConfig().url),
       scheduler:!!(process.env.QSTASH_TOKEN&&process.env.CRON_SECRET),
     }:undefined };
 }
@@ -125,9 +128,12 @@ export async function command(user: DBRow, raw: unknown): Promise<Record<string,
       await audit(user.id,'审批请假',input,tx);return {message:'审批结果已同步给学生'};
     }
     if(action==='settings.save'){
-      const input=z.object({className:z.string().trim().min(1).max(40),adminEmails:z.array(z.email()).max(5),locationConfigured:z.boolean()}).parse(data);
+      const input=z.object({className:z.string().trim().min(1).max(40),capacity:classCapacitySchema.optional(),adminEmails:z.array(z.email()).max(5),locationConfigured:z.boolean()}).parse(data);
       const previous=await settings(tx);
-      await run('UPDATE settings SET value=? WHERE id=1',[JSON.stringify({...previous,...input}),],tx);
+      const capacity=input.capacity===undefined?previous.capacity??null:input.capacity;
+      const count=Number((await one("SELECT COUNT(*) n FROM users WHERE role='student'",[],tx)).n);
+      if(capacity!==null&&capacity<count)throw new Error(`人数上限不能少于当前名册的 ${count} 人，请保留现有人数或留空取消上限`);
+      await run('UPDATE settings SET value=? WHERE id=1',[JSON.stringify({...previous,...input,capacity}),],tx);
       await audit(user.id,'更新系统设置',input,tx);return {message:'系统设置已保存'};
     }
     if(action==='defaults.save'){
@@ -171,22 +177,25 @@ export async function command(user: DBRow, raw: unknown): Promise<Record<string,
       return {message:'当天安排已发布，其他日期不受影响'};
     }
     if(action==='students.import'){
-      const input=z.object({students:z.array(z.object({code:z.string().trim().min(1).max(32).regex(/^[A-Za-z0-9_-]+$/),name:z.string().trim().min(1).max(30)})).min(1).max(39)}).parse(data);
-      const count=await one("SELECT COUNT(*) n FROM users WHERE role='student'",[],tx);
-      const newCodes=[];
-      for(const s of input.students){if(!await one('SELECT id FROM users WHERE code=?',[s.code],tx))newCodes.push(s.code);}
-      if(Number(count.n)+new Set(newCodes).size>39)throw new Error('本班最多 39 名学生，请检查重复或错误的学号');
+      const input=z.object({students:z.array(z.object({code:z.string().transform(normalizeStudentCode).pipe(z.string().min(1).max(32).regex(/^[A-Za-z0-9_-]+$/)),name:z.string().trim().min(1).max(30)})).min(1).max(1000,'每次最多导入 1000 条，请分批导入；班级总人数不受此批次限制')}).parse(data);
       if(new Set(input.students.map(s=>s.code)).size!==input.students.length)throw new Error('导入的学号重复');
-      for(const s of input.students){
-        const existing=await one('SELECT * FROM users WHERE code=?',[s.code],tx);
-        if(existing){if(existing.role!=='student')throw new Error('学号与管理员账号冲突');await run('UPDATE users SET name=? WHERE id=?',[s.name,existing.id],tx);}
-        else{const id=crypto.randomUUID();await run("INSERT INTO users(id,code,name,role,created_at) VALUES(?,?,?,'student',?)",[id,s.code,s.name,Date.now()],tx);
-          // 只将新学生加入尚未开始的未来场次。
-          const future=await rows('SELECT * FROM sessions WHERE date>=?',[dateCN(businessNow())],tx);
-          for(const s of future)if(period(s.date,JSON.parse(s.rules_json),businessNow())==='before')await run('INSERT OR IGNORE INTO session_members(session_id,user_id) VALUES(?,?)',[s.id,id],tx);
+      const existing=await rows('SELECT id,code,role FROM users',[],tx),byCode=new Map(existing.map(s=>[s.code,s]));
+      if(input.students.some(s=>byCode.get(s.code)?.role==='admin'))throw new Error('学号与管理员账号冲突');
+      const additions=input.students.filter(s=>!byCode.has(s.code)).map(s=>({...s,id:crypto.randomUUID()}));
+      const config=await settings(tx),capacity=config.capacity??null,count=existing.filter(s=>s.role==='student').length;
+      if(capacity!==null&&count+additions.length>capacity)throw new Error(`导入后将有 ${count+additions.length} 人，超过后台设置的 ${capacity} 人上限，请先调整人数上限`);
+      const statements:InStatement[]=input.students.filter(s=>byCode.has(s.code)).map(s=>({sql:'UPDATE users SET name=? WHERE id=?',args:[s.name,byCode.get(s.code)!.id]}));
+      for(const s of additions)statements.push({sql:"INSERT INTO users(id,code,name,role,created_at) VALUES(?,?,?,'student',?)",args:[s.id,s.code,s.name,Date.now()]});
+      // 合并写入，避免每个学生、每个日期单独访问远程数据库。
+      for(let i=0;i<statements.length;i+=100)await tx.batch(statements.slice(i,i+100));
+      if(additions.length){
+        const now=businessNow(),future=(await rows('SELECT * FROM sessions WHERE date>=?',[dateCN(now)],tx)).filter(s=>period(s.date,JSON.parse(s.rules_json),now)==='before');
+        for(let si=0;si<future.length;si+=200)for(let ui=0;ui<additions.length;ui+=200){
+          const sessionIds=future.slice(si,si+200).map(s=>s.id),studentIds=additions.slice(ui,ui+200).map(s=>s.id);
+          await run(`INSERT OR IGNORE INTO session_members(session_id,user_id) SELECT s.id,u.id FROM sessions s CROSS JOIN users u WHERE s.id IN (${sessionIds.map(()=>'?').join(',')}) AND u.id IN (${studentIds.map(()=>'?').join(',')})`,[...sessionIds,...studentIds],tx);
         }
       }
-      await audit(user.id,'导入学生名单',{count:input.students.length},tx);return {message:`已保存 ${input.students.length} 名学生`};
+      await audit(user.id,'导入学生名单',{count:input.students.length,added:additions.length},tx);return {message:`已保存 ${input.students.length} 名学生，当前名册共 ${count+additions.length} 人`};
     }
     if(action==='student.update'){
       const input=z.object({id:z.string(),code:z.string().transform(normalizeStudentCode).pipe(z.string().min(1).max(32).regex(/^[A-Za-z0-9_-]+$/)),name:z.string().trim().min(1).max(30)}).parse(data);

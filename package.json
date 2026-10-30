@@ -2,6 +2,8 @@
   "name": "evening-study-check-in",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
+  "description": "Self-hosted evening self-study attendance and leave management with configurable class sizes.",
   "type": "module",
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",

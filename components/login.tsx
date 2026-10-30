@@ -16,7 +16,7 @@ export default function Login({demo,wechat,bind=false}:{demo:boolean;wechat:bool
   return <main className="login-page">
     <section className="login-story">
       <div className="brand"><span className="brand-mark"><BookOpen size={25}/></span><strong>晚习<span>EVENING STUDY</span></strong></div>
-      <div className="story-copy"><span className="eyebrow light">一个班级 · 39 份专注</span><h1>把每一个晚上，<br/>留给更好的自己。</h1><p>从准时到场开始，让专注有迹可循。<br/>班级晚自习打卡与请假，在这里轻松完成。</p><div className="story-features"><span><Clock3 size={18}/>按时打卡</span><span><ShieldCheck size={18}/>名单核对</span><span><Users size={18}/>班级同行</span></div></div>
+      <div className="story-copy"><span className="eyebrow light">一个班级 · 每一份专注</span><h1>把每一个晚上，<br/>留给更好的自己。</h1><p>从准时到场开始，让专注有迹可循。<br/>班级晚自习打卡与请假，在这里轻松完成。</p><div className="story-features"><span><Clock3 size={18}/>按时打卡</span><span><ShieldCheck size={18}/>名单核对</span><span><Users size={18}/>班级同行</span></div></div>
       <div className="book-art" aria-hidden="true"><div className="art-orbit orbit-one"/><div className="art-orbit orbit-two"/><div className="art-book"><i/><i/><i/><i/><i/></div><span className="art-star">✦</span><span className="art-dot"/></div><span className="story-footer">每一份专注，都值得认真记录。</span>
     </section>
     <section className="login-form-side"><div className="login-card">
@@ -36,7 +36,7 @@ export default function Login({demo,wechat,bind=false}:{demo:boolean;wechat:bool
       {mode==='login'&&!adminMode&&<><div className="divider"><span>或使用微信身份</span></div><a className={`button full wechat-button ${wechat?'':'soft'}`} href="/api/auth/wechat/start"><MessageCircle size={19}/>微信公众号登录</a>{!wechat&&<p className="tiny muted center">公众号接入完成后，可在微信内登录</p>}</>}
       <p className="login-help">{mode==='register'||mode==='bind'?'姓名或学号与名单不符？请联系管理员更正。':'忘记密码或账号被误注册？请联系管理员核实处理。'}</p>
       {mode!=='bind'&&<button className="admin-entry" onClick={()=>{setMode('login');setAdminMode(!adminMode);setError('');}}>{adminMode?'返回学生登录':'管理员登录'}</button>}
-      {demo&&<div className="demo-entry"><strong className="demo-label">本地演示模式</strong><p>使用虚构的 39 人班级体验完整流程，模拟时间为 17:45。</p><div><Button busy={!!busy} onClick={()=>preview('student')}><GraduationCap size={17}/>学生端体验</Button><Button busy={!!busy} onClick={()=>preview('admin')}><Users size={17}/>管理后台体验</Button></div></div>}
+      {demo&&<div className="demo-entry"><strong className="demo-label">本地演示模式</strong><p>使用虚构班级体验完整流程，模拟时间为 17:45。</p><div><Button busy={!!busy} onClick={()=>preview('student')}><GraduationCap size={17}/>学生端体验</Button><Button busy={!!busy} onClick={()=>preview('admin')}><Users size={17}/>管理后台体验</Button></div></div>}
       <p className="login-privacy"><ShieldCheck size={14}/>身份仅用于本班考勤，证明材料按权限查看</p>
     </div><span className="login-bottom">晚习 · 班级晚自习管理</span></section>
   </main>;

@@ -7,26 +7,28 @@ import { localPath } from '../lib/files';
 if(process.env.VERCEL||process.env.DEMO_MODE!=='true'||!/file:/.test(process.env.DATABASE_URL||''))throw new Error('演示数据只能写入本地专用文件数据库');
 await ready();
 if(await one("SELECT id FROM users WHERE code='demo-admin'")){console.log('本地演示数据已存在，保留已有试用操作。');process.exit(0);}
+if(await one('SELECT id FROM users LIMIT 1'))throw new Error('此数据库已有用户，请使用独立的本地演示数据库');
+const size=Number(process.env.DEMO_STUDENT_COUNT||30);if(!Number.isSafeInteger(size)||size<2||size>1000)throw new Error('DEMO_STUDENT_COUNT 应为 2–1000 的整数，仅用于本地虚构名单');
 const password=token().slice(0,20),pw=await passwordHash(password),today=dateCN();
 await transaction(async tx=>{
   await run("INSERT INTO users(id,code,name,role,password_hash,created_at) VALUES('demo-admin','demo-admin','班级管理员','admin',?,?)",[pw,Date.now()],tx);
   const students=[];
-  for(let i=1;i<=39;i++){
+  for(let i=1;i<=size;i++){
     const code=`2026${String(i).padStart(2,'0')}`;students.push({code,name:`同学 ${String(i).padStart(2,'0')}`});
-    await run("INSERT INTO users(id,code,name,role,password_hash,created_at) VALUES(?,?,?,'student',?,?)",[`student-${i}`,code,`同学 ${String(i).padStart(2,'0')}`,i<=36?pw:null,Date.now()],tx);
+    await run("INSERT INTO users(id,code,name,role,password_hash,created_at) VALUES(?,?,?,'student',?,?)",[`student-${i}`,code,`同学 ${String(i).padStart(2,'0')}`,i<=Math.max(1,size-3)?pw:null,Date.now()],tx);
   }
-  await run('UPDATE settings SET value=? WHERE id=1',[JSON.stringify({className:'我们的班级',capacity:39,adminEmails:[],locationConfigured:false})],tx);
+  await run('UPDATE settings SET value=? WHERE id=1',[JSON.stringify({className:'我们的班级',capacity:size,adminEmails:[],locationConfigured:false})],tx);
   for(let offset=-6;offset<=28;offset++){
     const date=addDays(today,offset);
     if([0,6].includes(new Date(date).getUTCDay())&&offset!==0)continue;
     const sid=await createSession(date,tx),rules=JSON.stringify(await rulesFor(date,tx));
     if(offset<=0){
-      for(let i=2;i<=(offset===0?27:35);i++){
+      for(let i=2;i<=Math.min(size,offset===0?Math.floor(size*.7):Math.floor(size*.9));i++){
         if(offset===0&&[3,4,5,6,7].includes(i))continue;
         await run('INSERT INTO checkins(id,session_id,user_id,submitted_at,latitude,longitude,accuracy,distance,photo_ids,note,rule_snapshot,rule_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,1)',[crypto.randomUUID(),sid,`student-${i}`,Date.parse(`${date}T17:${String(31+i%20).padStart(2,'0')}:00+08:00`),39.999,116.326,15,12+i,'[]','演示记录',rules],tx);
       }
       if(offset===0){
-        for(let i=3;i<=7;i++){
+        for(let i=3;i<=Math.min(7,size);i++){
           const id=crypto.randomUUID(),fileId=crypto.randomUUID();
           await mkdir('data/uploads',{recursive:true});
           const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+cGZkAAAAASUVORK5CYII=','base64');
@@ -41,5 +43,5 @@ await transaction(async tx=>{
   }
   await mkdir('.local',{recursive:true});await writeFile('.local/demo-credentials.json',JSON.stringify({admin:'demo-admin',password,students},null,2));
 });
-console.log('39 人演示班级已就绪。登录页可一键体验；数据均为虚构，模拟打卡时间为每天 17:45。');
+console.log(size+' 人演示班级已就绪。登录页可一键体验；数据均为虚构，模拟打卡时间为每天 17:45。');
 process.exit(0);

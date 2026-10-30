@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { validDate,timeMinutes } from './domain';
 export const daySchema=z.string().refine(validDate,'日期无效');
+export const classCapacitySchema=z.number().int().positive().nullable();
 const time=z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 export const rulesSchema=z.object({
   studyStart:time,open:time,close:time,

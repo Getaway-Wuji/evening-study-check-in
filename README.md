@@ -1,11 +1,13 @@
 # Evening Study Check-in · 晚自习打卡
 
-面向一个班级、39 名学生的微信公众号 H5 网站。学生从公众号菜单进入网页，打卡、申请请假和查看结果；管理员使用网页后台管理时间、地点、名册、审批和通知。部署目标为 Vercel，使用 Next.js 16 和 TypeScript。
+可供不同班级独立部署的微信公众号 H5 晚自习管理网站。学生打卡、申请请假和查看结果；管理员管理时间、地点、名册、审批和通知。人数由各班自行设置，实际人数随名册自动统计。使用 Next.js 16 和 TypeScript，支持 Vercel 部署。
+
+[Fork 本项目](https://github.com/Getaway-Wuji/evening-study-check-in/fork) · [部署到 Vercel](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FGetaway-Wuji%2Fevening-study-check-in) · [MIT 许可证](LICENSE)
 
 ## 本次已实现
 
 - 学生端：个人身份、今日打卡、定位及距离校验、照片和证明上传、多日分类请假、撤回、审批进度、历史记录。
-- 后台：39 人名册录入与 CSV 导入、姓名学号编辑、账号重置、考勤明细与人工补录、审批和撤销、考勤导出、通知状态、操作日志。
+- 后台：自定义班级人数上限、名册录入与 CSV 导入、姓名学号编辑、账号重置、考勤明细与人工补录、审批和撤销、考勤导出、通知状态、操作日志。
 - 默认打卡 17:30–18:05，晚自习 18:00 开始。可改默认生效日期，或单独调整一天，例如延长至 18:15。截止时间包含对应分钟。
 - 学期按周一至周日计周，默认每周日、周二、周三。每个星期可分多段周次，分别设置教室、定位点、半径和材料要求；默认仅收集自动识别的姓名与定位。
 - 周次规则先保存，再核对实际日期并发布；同星期周次重叠会被拦截。批量发布保留单日临时调整，跳过历史及已开始场次；默认时间更新保留不同周次的教室和独立时间。
@@ -20,14 +22,15 @@
 
 姓名与学号不是秘密，这种首次注册方式无法单独防止知情人抢先注册；后续登录由密码或已关联的微信身份验证，遇到误注册由管理员核实处理。
 
-## 当前部署
+## 每个班级独立部署
 
-- 私有源码仓库：[Getaway-Wuji/evening-study-check-in](https://github.com/Getaway-Wuji/evening-study-check-in)。`main` 分支更新后由 Vercel 自动构建生产版本。
-- 网站域名：[study.grace-spring.top](https://study.grace-spring.top)，备用地址：[evening-study-check-in.vercel.app](https://evening-study-check-in.vercel.app)。管理员通过 `/setup` 首次创建自己的账号，初始化凭证仅在 Vercel 生产环境配置。
-- 数据库使用 Turso Starter 免费方案，位于东京；应用函数也位于东京。附件使用香港区域的 Private Vercel Blob。班级、学期、教室及学生名单由管理员自行录入，部署不填充演示数据。
-- 域名注册商保留 NameSilo，DNS 托管于 Cloudflare Free。域名服务器为 `haley.ns.cloudflare.com`、`nitin.ns.cloudflare.com`，迁移保留原有毕业项目及其他记录。`study` 的 CNAME 采用 Vercel 指定的 `8e903560b8201262.vercel-dns-017.com`，当前使用 DNS only。
-- 普通 Cloudflare DNS 托管不等同于大陆专线或中国节点；国内实际访问效果须通过校园网络和手机网络实测。DNS only 配置遵循 [Vercel 的直连建议](https://vercel.com/kb/guide/can-i-use-a-proxy-on-top-of-my-vercel-deployment)，Cloudflare 的中国网络属于[单独的企业服务](https://developers.cloudflare.com/china-network/)。
-- 公众号授权和真实邮件发送仍需配置自己的凭据；网站部署完成不代表这两项已接通。云资源使用当前免费方案及其额度，未开通付费升级。
+本项目采用“一次部署服务一个班级”的方式。不同班级 Fork 后分别使用自己的 Vercel 项目、数据库、私有文件存储、管理员和服务凭据；一个站点内不提供多班级切换。
+
+- 首次初始化可填写班级名称及人数上限，人数上限留空则不设业务人数限制。之后在“系统设置”中修改。
+- 实际人数、已注册人数和考勤人数从名册及场次名单统计。填写人数上限不会创建虚构学生，也不会删除已有学生。
+- 导入后超出已设置上限会整体拒绝；上限不能少于已有名册人数。每批最多 1000 条、CSV 文件最多 200 KB，可以分批继续导入。
+- 更新已有站点时保留原来的人数设置、名单和考勤；已有班级可以在后台调整或取消上限。
+- 域名、公众号、邮箱及云端存储均由部署者自行配置。请勿把其他班级的生产数据或密钥复制到自己的部署。
 
 ## 本机正式录入
 
@@ -35,7 +38,7 @@
 
 1. 在“打卡安排”填写真实学期名称、第 1 周的周一、总周数及固定星期。
 2. 分别为每周日、二、三添加各段周次。例如周二第 1–8 周教室 A，第 9–20 周教室 B；周三可使用自己的分段。核对各点坐标，选择定位半径，通常关闭照片和备注。
-3. 录入本班 39 人的姓名、学号，再点击“预览并发布日期”。预览不会修改学生安排，确认发布后才会生成日期；未来未覆盖的日期需要明确确认跳过。
+3. 录入本班学生的姓名、学号，再点击“预览并发布日期”。预览不会修改学生安排，确认发布后才会生成日期；未来未覆盖的日期需要明确确认跳过。
 4. 在日历选择某天，可临时改教室、延长截止时间、增加材料或停课，也可恢复对应周次规则。
 
 此模式使用真实时间，数据保存到本机独立数据库；不自动添加虚构人员或考勤。此前的 `data/demo.db` 可单独保留。正式数据模式不代表已部署公网，公众号、邮件和远程文件服务仍需自己的配置。
@@ -51,6 +54,7 @@ npm install
 # 使用专用本地演示库，填写：
 # DATABASE_URL=file:./data/demo.db
 # DEMO_MODE=true
+# 可选：DEMO_STUDENT_COUNT=30，生成不同规模的虚构名单。
 npm run demo
 npm run dev
 ```
@@ -73,14 +77,26 @@ npx tsx scripts/verify-local.ts
 
 ## Vercel 部署
 
-1. 将本目录作为项目根目录推送到自己的仓库，在 Vercel 导入，选择 Next.js。构建命令 `npm run build`，不做静态导出。
-2. 创建远程 libSQL 数据库（如 Turso），设置 `DATABASE_URL` 和 `DATABASE_AUTH_TOKEN`，或直接使用 Vercel Marketplace 自动配置的 `TURSO_DATABASE_URL`、`TURSO_AUTH_TOKEN`。Vercel 上禁止 `file:` 数据库，不能把临时文件当持久存储。
-3. 创建 **Private** 类型的 Vercel Blob 存储并连接项目，配置 `BLOB_READ_WRITE_TOKEN`。照片和证明直接上传到私有存储，避免超过函数请求体限制。
-4. 配置 `APP_URL=https://你的正式域名`、`DEMO_MODE=false` 及随机、保密的 `SETUP_TOKEN`。在 `/setup` 填入初始化凭证，自行创建管理员；已有管理员时不能再次初始化。也可在受控终端加载 `ADMIN_USERNAME`、至少 14 位的 `ADMIN_PASSWORD`，执行 `npx tsx scripts/setup.ts`，只创建管理员，不写入虚构名单。
-5. 登录后台录入本班 39 人的姓名与学号，填写真实学期起点，按星期和周次配置教室及已核对的定位点、半径，再核对并发布日期。
+1. Fork 本项目到自己的 GitHub 账号。先创建自己的远程 libSQL 数据库（如 Turso）和 **Private** 类型的 Vercel Blob 存储，准备连接信息；也可通过 Vercel Marketplace 创建这些资源。
+2. 将仓库作为项目根目录导入 Vercel，选择 Next.js，构建命令 `npm run build`，不做静态导出。首次部署前按下表填入自己的生产环境变量。
+3. 数据库可以使用 `DATABASE_URL`、`DATABASE_AUTH_TOKEN`，或 Turso 集成的 `TURSO_DATABASE_URL`、`TURSO_AUTH_TOKEN`。选择一组实际可用的连接信息即可。**不要把 `.env.example` 中本机用的 `file:` 地址复制到 Vercel**。附件需要 `BLOB_READ_WRITE_TOKEN`，照片和证明直接上传到私有存储。
+4. 配置 `APP_URL=https://你的正式域名`、`DEMO_MODE=false` 及随机、保密的 `SETUP_TOKEN`。部署后在自己的 `/setup` 填入初始化凭证，设置班级名称、可选人数上限及管理员账号；已有管理员时不能再次初始化。也可在受控终端加载 `ADMIN_USERNAME`、至少 14 位的 `ADMIN_PASSWORD`，执行 `npx tsx scripts/setup.ts`，再登录后台设置班级信息。
+5. 登录后台录入本班学生的姓名与学号，填写真实学期起点，按星期和周次配置教室及已核对的定位点、半径，再核对并发布日期。
 6. 密钥只保存到平台环境变量和受保护的本地配置；不要提交 `.env.local`、数据库、上传文件或测试凭据。初始化后可从 Vercel 运行时环境移除 `SETUP_TOKEN` 和 `ADMIN_PASSWORD`。
 
 平台连接使用项目所有者自己的账号和受保护的环境变量。正式库和文件服务的大陆网络可达性、备份及恢复应在开始收集真实班级数据前实测。
+
+| 生产环境变量 | 用途 |
+| --- | --- |
+| `APP_URL` | 自己网站的完整 HTTPS 地址 |
+| `DEMO_MODE=false` | 正式环境不启用演示入口或模拟时间 |
+| `SETUP_TOKEN` | 仅自己掌握的随机初始化凭证，不是学生注册密码 |
+| `TURSO_DATABASE_URL`、`TURSO_AUTH_TOKEN` | 自己的 Turso 数据库连接，或改用 `DATABASE_*` 对应变量 |
+| `BLOB_READ_WRITE_TOKEN` | 自己的 Private Blob 读写凭据 |
+
+域名可使用 Vercel 提供的地址，也可绑定自己的域名。使用 Cloudflare 时，按 Vercel 给出的实际记录配置 CNAME，先采用 DNS only；无需转移域名注册商。`vercel.json` 默认把应用函数放在东京，可根据数据库所在区域自行修改。普通 Cloudflare DNS 托管不等同于大陆专线或中国节点，访问效果应在实际网络测试。参考 [Vercel 的代理配置说明](https://vercel.com/kb/guide/can-i-use-a-proxy-on-top-of-my-vercel-deployment)、[Cloudflare 中国网络说明](https://developers.cloudflare.com/china-network/)。
+
+公众号登录和真实邮件发送是独立配置项，详见下文；仅部署网站不会自动获得这些服务权限。若使用预览部署，请为其配置独立测试数据和存储，不要连接真实班级的生产数据库。
 
 ## 微信公众号接入
 
@@ -125,3 +141,7 @@ npx tsx scripts/verify-local.ts
 - `lib/wechat.ts`、`lib/mail.ts`、`lib/files.ts`：公众号、邮件与私有文件接入。
 - `scripts/`：正式初始化、本地虚构数据及接口验收。
 - `tests/`：核心规则与事务测试。
+
+## 许可证
+
+项目使用 [MIT License](LICENSE)，欢迎其他班级 Fork、修改并独立部署，分发时保留许可证和版权声明。第三方依赖遵循各自的许可证。

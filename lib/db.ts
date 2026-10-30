@@ -69,7 +69,7 @@ async function migrate() {
   for(const [name,type] of [['term_id','TEXT'],['recurrence_id','TEXT'],['week_number','INTEGER']]){
     if(!columns.some(c=>c.name===name))await run(`ALTER TABLE sessions ADD COLUMN ${name} ${type}`);
   }
-  await run('INSERT OR IGNORE INTO settings(id,value) VALUES(1,?)',[JSON.stringify({ className: '我的班级', capacity: 39, adminEmails: [], locationConfigured: false })]);
+  await run('INSERT OR IGNORE INTO settings(id,value) VALUES(1,?)',[JSON.stringify({ className: '我的班级', capacity: null, adminEmails: [], locationConfigured: false })]);
   await run('INSERT OR IGNORE INTO defaults_versions(id,effective_from,rules_json,created_at) VALUES(?,?,?,?)',['initial','2000-01-01',JSON.stringify(defaultRules),Date.now()]);
 }
 export async function settings(c: Connection = db()) { return JSON.parse((await one('SELECT value FROM settings WHERE id=1',[],c)).value); }
