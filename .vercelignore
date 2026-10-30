@@ -1,7 +1,7 @@
 node_modules/
 .next/
 .local/
-data/
+/data/
 .env*
 !.env.example
 *.tsbuildinfo

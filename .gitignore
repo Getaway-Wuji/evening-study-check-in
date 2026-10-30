@@ -3,7 +3,7 @@ node_modules/
 .env*
 !.env.example
 .local/
-data/
+/data/
 *.tsbuildinfo
 test-results/
 .vercel/
