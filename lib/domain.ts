@@ -1,5 +1,6 @@
-export const leaveKinds = { personal: '事假', sick: '病假', free: '无理由请假' } as const;
-export type LeaveKind = keyof typeof leaveKinds;
+// 旧记录与首次启用的初始类型；实际可用类型由班级后台配置。
+export const leaveKinds:Record<string,string> = { personal: '事假', sick: '病假', free: '无理由请假' };
+export type LeaveKind = string;
 export interface Rules {
   studyStart: string; open: string; close: string;
   locationName: string; latitude: number; longitude: number; radius: number;

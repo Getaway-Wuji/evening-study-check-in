@@ -2,8 +2,11 @@
 import { useState,type ReactNode } from 'react';
 import { Clock3,MapPin,FileText,LocateFixed,ArrowUpRight } from 'lucide-react';
 import { Button } from './common';
-import { wgsToGcj,leaveKinds,type Rules,type LeaveKind } from '@/lib/domain';
+import {useStore} from './store';
+import {needsLeaveProof} from '@/lib/class-policy';
+import { wgsToGcj,type Rules } from '@/lib/domain';
 export default function RulesEditor({initial,onSave,busy,label,children,inheritTime=false,defaultTime}:{initial:Rules;onSave:(rules:Rules,form:FormData)=>void;busy:boolean;label:string;children?:ReactNode;inheritTime?:boolean;defaultTime?:Pick<Rules,'open'|'close'|'studyStart'>}){
+  const {d}=useStore(),types=d.settings.policy.leaveTypes.filter(t=>t.enabled);
   const [r,setR]=useState<Rules>(structuredClone(initial)),[locating,setLocating]=useState(false),[locationError,setLocationError]=useState('');
   const display=inheritTime&&defaultTime?{...r,open:defaultTime.open,close:defaultTime.close,studyStart:defaultTime.studyStart}:r;
   const photo=!!(r.photoEnabled??r.photoRequired),note=!!(r.noteEnabled??r.noteRequired);
@@ -12,7 +15,7 @@ export default function RulesEditor({initial,onSave,busy,label,children,inheritT
     setLocationError('');if(!navigator.geolocation){setLocationError('当前浏览器不支持定位，请通过地图取点填写坐标');return;}
     setLocating(true);navigator.geolocation.getCurrentPosition(p=>{const [latitude,longitude]=wgsToGcj(p.coords.latitude,p.coords.longitude);setR(v=>({...v,latitude:+latitude.toFixed(6),longitude:+longitude.toFixed(6),locationConfirmed:false}));setLocating(false);if(p.coords.accuracy>100)setLocationError('当前位置精度较低，保存前请在地图上核对点位。');},()=>{setLocating(false);setLocationError('无法获取位置，请检查权限或通过地图取点填写。');},{enableHighAccuracy:true,maximumAge:0,timeout:15000});
   }
-  return <form className="form-stack" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);onSave({...display,open:String(f.get('open')||display.open),close:String(f.get('close')||display.close),studyStart:String(f.get('studyStart')||display.studyStart),photoEnabled:photo,noteEnabled:note},f);}}>
+  return <form className="form-stack" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);onSave({...display,open:String(f.get('open')||display.open),close:String(f.get('close')||display.close),studyStart:String(f.get('studyStart')||display.studyStart),photoEnabled:photo,noteEnabled:note,proofRequired:{...r.proofRequired,...Object.fromEntries(types.map(type=>[type.id,needsLeaveProof(r,type)]))}},f);}}>
     {children}<div className="form-section-title"><Clock3 size={17}/>打卡时间{inheritTime&&<span className="optional">沿用默认时间</span>}</div>
     <div className="form-grid three">{([['open','开始打卡'],['studyStart','晚自习开始'],['close','打卡截止']] as const).map(([key,text])=><label key={key}>{text}<input name={key} required type="time" disabled={inheritTime} value={display[key]} onInput={e=>update(key,e.currentTarget.value)} onChange={e=>update(key,e.target.value)}/></label>)}</div>
     <p className="field-hint">时间按北京时间设置，可自行填写。截止时间包含对应分钟，下一分钟起不能提交。</p>
@@ -31,7 +34,7 @@ export default function RulesEditor({initial,onSave,busy,label,children,inheritT
     <label className="check-label"><input type="checkbox" checked={note} onChange={e=>update('noteEnabled',e.target.checked)}/>额外收集打卡备注</label>
     {note&&<label className="check-label nested-fields"><input type="checkbox" checked={r.noteRequired} onChange={e=>update('noteRequired',e.target.checked)}/>备注必填</label>}
     <p className="field-hint">通常保留姓名和定位即可；未启用的照片、备注不会出现在学生打卡表单中。</p>
-    <div className="form-section-title">请假证明要求</div><div className="weekday-options">{Object.entries(leaveKinds).map(([key,text])=><label className="check-label" key={key}><input type="checkbox" checked={r.proofRequired[key as LeaveKind]} onChange={e=>setR(v=>({...v,proofRequired:{...v.proofRequired,[key]:e.target.checked}}))}/>{text}需证明</label>)}</div>
+    <div className="form-section-title">请假证明要求</div><div className="weekday-options">{types.map(type=><label className="check-label" key={type.id}><input type="checkbox" checked={needsLeaveProof(r,type)} onChange={e=>setR(v=>({...v,proofRequired:{...v.proofRequired,[type.id]:e.target.checked}}))}/>{type.name}需证明</label>)}</div>
     <Button variant="primary full" busy={busy} type="submit">{label}</Button>
   </form>;
 }

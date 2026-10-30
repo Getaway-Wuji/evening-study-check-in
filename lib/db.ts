@@ -2,6 +2,8 @@ import { createClient, type Client, type Transaction, type InValue } from '@libs
 import { defaultRules } from './domain';
 import { mkdirSync } from 'node:fs';
 import { databaseConfig } from './database-config';
+import {resolveClassPolicy,type ClassPolicy} from './class-policy';
+export interface ClassSettings {className:string;capacity:number|null;adminEmails?:string[];locationConfigured:boolean;currentTermId?:string;policy:ClassPolicy}
 export type Connection = Client | Transaction;
 export type DBRow = Record<string, any>;
 const globalDB = globalThis as unknown as { studyDB?: Client; schemaReady?: Promise<void>; schemaVersion?:number; writeTail?:Promise<void> };
@@ -36,7 +38,7 @@ export async function transaction<T>(fn: (t: Transaction) => Promise<T>): Promis
   }finally{release();}
 }
 export async function ready() {
-  if(globalDB.schemaVersion!==2){globalDB.schemaReady=undefined;globalDB.schemaVersion=2;}
+  if(globalDB.schemaVersion!==3){globalDB.schemaReady=undefined;globalDB.schemaVersion=3;}
   if (!globalDB.schemaReady) globalDB.schemaReady = migrate().catch(e=>{ globalDB.schemaReady=undefined; throw e; });
   await globalDB.schemaReady;
 }
@@ -69,10 +71,14 @@ async function migrate() {
   for(const [name,type] of [['term_id','TEXT'],['recurrence_id','TEXT'],['week_number','INTEGER']]){
     if(!columns.some(c=>c.name===name))await run(`ALTER TABLE sessions ADD COLUMN ${name} ${type}`);
   }
+  if(!(await rows('PRAGMA table_info(leaves)')).some(c=>c.name==='kind_label')){
+    try{await run('ALTER TABLE leaves ADD COLUMN kind_label TEXT');}
+    catch(error){if(!(await rows('PRAGMA table_info(leaves)')).some(c=>c.name==='kind_label'))throw error;}
+  }
   await run('INSERT OR IGNORE INTO settings(id,value) VALUES(1,?)',[JSON.stringify({ className: '我的班级', capacity: null, adminEmails: [], locationConfigured: false })]);
   await run('INSERT OR IGNORE INTO defaults_versions(id,effective_from,rules_json,created_at) VALUES(?,?,?,?)',['initial','2000-01-01',JSON.stringify(defaultRules),Date.now()]);
 }
-export async function settings(c: Connection = db()) { return JSON.parse((await one('SELECT value FROM settings WHERE id=1',[],c)).value); }
+export async function settings(c: Connection = db()):Promise<ClassSettings> { const value=JSON.parse((await one('SELECT value FROM settings WHERE id=1',[],c)).value);return {...value,policy:resolveClassPolicy(value.policy)}; }
 export async function rulesFor(date: string,c: Connection = db()) {
   return JSON.parse((await one('SELECT rules_json FROM defaults_versions WHERE effective_from<=? ORDER BY effective_from DESC,created_at DESC LIMIT 1',[date],c)).rules_json);
 }
