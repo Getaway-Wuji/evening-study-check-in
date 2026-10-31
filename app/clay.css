@@ -393,6 +393,7 @@ button,.button,.check-label,.weekday-choice {touch-action:manipulation;}
 .mail-setup-status strong,.mail-test-box>strong {color:var(--clay-ink);}
 .mail-setup-status span,.mail-test-box p {overflow-wrap:anywhere;}
 .mail-test-box .button {justify-self:start;}
+.mail-retry-actions {display:flex;flex-wrap:wrap;gap:12px;min-width:0;}
 @media(max-width:780px){.mail-setup-status{grid-template-columns:1fr}.mail-setup-body{padding:0 18px 22px}.mail-setup-card .card-heading .button,.mail-test-box .button{width:100%}}
 @media(max-width:780px){.wechat-setup-status{grid-template-columns:1fr}.wechat-setup-body{padding:0 18px 22px}.wechat-menu-link>div{flex-wrap:wrap}.wechat-menu-link input{font-size:16px;flex-basis:100%}.wechat-setup-card .card-heading .button{width:100%}}
 @media(max-width:780px){
