@@ -384,6 +384,16 @@ button,.button,.check-label,.weekday-choice {touch-action:manipulation;}
 .wechat-menu-link input {flex:1;min-width:0;width:100%;font-size:14px;}
 .wechat-setup-steps {padding-left:22px;display:grid;gap:12px;}
 .wechat-setup-steps strong {overflow-wrap:anywhere;}
+.mail-setup-card {margin-top:28px;}
+.mail-setup-card .card-heading {gap:12px;flex-wrap:wrap;}
+.mail-setup-card h2 {display:flex;align-items:center;gap:10px;}
+.mail-setup-body {display:grid;gap:20px;padding:0 24px 24px;color:var(--clay-muted);min-width:0;}
+.mail-setup-status {display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.mail-setup-status>div,.mail-test-box {display:grid;gap:10px;padding:18px;background:var(--clay-soft);border-radius:16px;box-shadow:var(--clay-inset);min-width:0;}
+.mail-setup-status strong,.mail-test-box>strong {color:var(--clay-ink);}
+.mail-setup-status span,.mail-test-box p {overflow-wrap:anywhere;}
+.mail-test-box .button {justify-self:start;}
+@media(max-width:780px){.mail-setup-status{grid-template-columns:1fr}.mail-setup-body{padding:0 18px 22px}.mail-setup-card .card-heading .button,.mail-test-box .button{width:100%}}
 @media(max-width:780px){.wechat-setup-status{grid-template-columns:1fr}.wechat-setup-body{padding:0 18px 22px}.wechat-menu-link>div{flex-wrap:wrap}.wechat-menu-link input{font-size:16px;flex-basis:100%}.wechat-setup-card .card-heading .button{width:100%}}
 @media(max-width:780px){
   .topbar {height:auto;min-height:68px;padding-top:env(safe-area-inset-top,0px);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));}

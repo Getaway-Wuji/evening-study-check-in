@@ -38,7 +38,7 @@ export async function transaction<T>(fn: (t: Transaction) => Promise<T>): Promis
   }finally{release();}
 }
 export async function ready() {
-  if(globalDB.schemaVersion!==3){globalDB.schemaReady=undefined;globalDB.schemaVersion=3;}
+  if(globalDB.schemaVersion!==4){globalDB.schemaReady=undefined;globalDB.schemaVersion=4;}
   if (!globalDB.schemaReady) globalDB.schemaReady = migrate().catch(e=>{ globalDB.schemaReady=undefined; throw e; });
   await globalDB.schemaReady;
 }
@@ -62,6 +62,7 @@ async function migrate() {
     CREATE UNIQUE INDEX IF NOT EXISTS one_active_leave ON leave_items(user_id,session_id) WHERE status IN ('pending','approved');
     CREATE TABLE IF NOT EXISTS files (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), name TEXT NOT NULL, content_type TEXT NOT NULL, size INTEGER NOT NULL, pathname TEXT NOT NULL, url TEXT, ready INTEGER NOT NULL DEFAULT 0, purpose TEXT NOT NULL CHECK(purpose IN ('photo','proof')), created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS email_jobs (id TEXT PRIMARY KEY, leave_id TEXT NOT NULL UNIQUE REFERENCES leaves(id), status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0, next_attempt INTEGER NOT NULL, lease_until INTEGER, provider_id TEXT, error TEXT, payload_json TEXT, created_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS email_tests (id TEXT PRIMARY KEY,payload_json TEXT NOT NULL,provider_id TEXT,error TEXT,created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS audit_logs (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL, created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, expires_at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS idx_auth_expiry ON auth_sessions(expires_at);
