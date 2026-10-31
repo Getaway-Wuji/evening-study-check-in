@@ -1,15 +1,15 @@
 .panel{margin-top:28px;min-width:0}
 .panel>form{padding:0 25px 25px;gap:24px}
-.panel h3{font-size:14px;margin-bottom:14px}
+.panel h3{font-size:16px;margin-bottom:14px}
 .panel :global(.policy-title){display:flex;align-items:center;justify-content:space-between;gap:15px;flex-wrap:wrap}
 .panel :global(.policy-title) h3{margin:0}
-.panel :global(.policy-section){min-width:0;border:1px solid #e6ecdf;border-radius:10px;padding:20px}
+.panel :global(.policy-section){min-width:0;border:1px solid var(--clay-border);border-radius:18px;padding:20px;background:#edf3fa;box-shadow:var(--clay-inset)}
 .panel :global(.policy-section)>label{margin-top:16px}
 .panel :global(.policy-grid){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
 .panel :global(.form-grid){gap:14px}
 .panel :global(.field-hint){line-height:1.9}
-.panel input[type=checkbox]{width:17px;height:17px;min-height:0;accent-color:#17634e}
+.panel input[type=checkbox]{width:18px;height:18px;min-height:0;accent-color:var(--clay-primary)}
 .panel td:first-child{min-width:160px}
 .panel td input:not([type=checkbox]){width:100%;min-width:140px}
 @media(max-width:900px){.panel :global(.policy-grid){grid-template-columns:1fr}}
-@media(max-width:600px){.panel>form{padding:0 16px 20px}.panel :global(.policy-section){padding:16px}.panel :global(.form-grid){grid-template-columns:1fr}.panel td,.panel th{padding:10px}.panel td input:not([type=checkbox]){font-size:11px}}
+@media(max-width:600px){.panel>form{padding:0 16px 20px}.panel :global(.policy-section){padding:16px}.panel :global(.form-grid){grid-template-columns:1fr}.panel td,.panel th{padding:10px}.panel td input:not([type=checkbox]){font-size:16px}}

@@ -2,6 +2,7 @@
 import { useState,useEffect,type FormEvent } from 'react';
 import { BookOpen,ArrowRight,ShieldCheck,Users,Clock3,MessageCircle,GraduationCap } from 'lucide-react';
 import { Button,api } from './common';
+import StudyScene from './study-scene';
 export default function Login({demo,wechat,bind=false}:{demo:boolean;wechat:boolean;bind?:boolean}){
   const [mode,setMode]=useState(bind?'bind':'login');
   const [busy,setBusy]=useState(''),[error,setError]=useState('');
@@ -17,13 +18,13 @@ export default function Login({demo,wechat,bind=false}:{demo:boolean;wechat:bool
     <section className="login-story">
       <div className="brand"><span className="brand-mark"><BookOpen size={25}/></span><strong>晚习<span>EVENING STUDY</span></strong></div>
       <div className="story-copy"><span className="eyebrow light">一个班级 · 每一份专注</span><h1>把每一个晚上，<br/>留给更好的自己。</h1><p>从准时到场开始，让专注有迹可循。<br/>班级晚自习打卡与请假，在这里轻松完成。</p><div className="story-features"><span><Clock3 size={18}/>按时打卡</span><span><ShieldCheck size={18}/>名单核对</span><span><Users size={18}/>班级同行</span></div></div>
-      <div className="book-art" aria-hidden="true"><div className="art-orbit orbit-one"/><div className="art-orbit orbit-two"/><div className="art-book"><i/><i/><i/><i/><i/></div><span className="art-star">✦</span><span className="art-dot"/></div><span className="story-footer">每一份专注，都值得认真记录。</span>
+      <StudyScene/><span className="story-footer">每一份专注，都值得认真记录。</span>
     </section>
     <section className="login-form-side"><div className="login-card">
       <span className="eyebrow">欢迎来到晚习</span>
       <h2>{mode==='bind'?'确认你的学生身份':mode==='register'?'注册晚习':adminMode?'管理员登录':'很高兴，在这里见到你'}</h2>
       <p className="muted">{mode==='bind'?'微信授权已完成，请填写名单中的学号和姓名。':mode==='register'?'学号、姓名与管理员录入的名单一致，即可注册。':adminMode?'使用管理员账号进入班级后台。':'登录后查看今天的晚自习安排。'}</p>
-      {mode!=='bind'&&<div className="segmented"><button className={mode==='login'?'active':''} onClick={()=>choose('login')}>登录</button><button className={mode==='register'?'active':''} onClick={()=>choose('register')}>注册</button></div>}
+      {mode!=='bind'&&<div className="segmented"><button aria-pressed={mode==='login'} className={mode==='login'?'active':''} onClick={()=>choose('login')}>登录</button><button aria-pressed={mode==='register'} className={mode==='register'?'active':''} onClick={()=>choose('register')}>注册</button></div>}
       {mode==='bind'&&<div className="segmented"><button className={!bindExisting?'active':''} onClick={()=>setBindExisting(false)}>核对班级名单</button><button className={bindExisting?'active':''} onClick={()=>setBindExisting(true)}>关联已注册账号</button></div>}
       <form onSubmit={submit} className="form-stack">
         <label>{adminMode&&mode==='login'?'管理员账号':'学号'}<input name="code" autoComplete="username" inputMode={adminMode?'text':'numeric'} placeholder={adminMode&&mode==='login'?'请输入管理员账号':'请输入你的学号'} required maxLength={40}/></label>
