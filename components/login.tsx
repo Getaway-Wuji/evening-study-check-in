@@ -3,7 +3,7 @@ import { useState,useEffect,type FormEvent } from 'react';
 import { BookOpen,ArrowRight,ShieldCheck,Users,Clock3,MessageCircle,GraduationCap } from 'lucide-react';
 import { Button,api } from './common';
 import StudyScene from './study-scene';
-export default function Login({demo,wechat,bind=false}:{demo:boolean;wechat:boolean;bind?:boolean}){
+export default function Login({demo,wechat,bind=false,wechatEnabled=true}:{demo:boolean;wechat:boolean;bind?:boolean;wechatEnabled?:boolean}){
   const [mode,setMode]=useState(bind?'bind':'login');
   const [busy,setBusy]=useState(''),[error,setError]=useState('');
   const [bindExisting,setBindExisting]=useState(false),[adminMode,setAdminMode]=useState(false);
@@ -34,7 +34,7 @@ export default function Login({demo,wechat,bind=false}:{demo:boolean;wechat:bool
         <Button variant="primary full" busy={!!busy} type="submit">{mode==='bind'?'确认身份':mode==='register'?'注册':'登录'}<ArrowRight size={17}/></Button>
       </form>
       {mode==='register'&&<p className="registration-note"><ShieldCheck size={14}/>仅核对现有班级名单，不新增学生名额。</p>}
-      {mode==='login'&&!adminMode&&<><div className="divider"><span>或使用微信身份</span></div><a className={`button full wechat-button ${wechat?'':'soft'}`} href="/api/auth/wechat/start"><MessageCircle size={19}/>微信公众号登录</a>{!wechat&&<p className="tiny muted center">公众号接入完成后，可在微信内登录</p>}</>}
+      {mode==='login'&&!adminMode&&wechatEnabled&&<><div className="divider"><span>或使用微信身份</span></div><a className={`button full wechat-button ${wechat?'':'soft'}`} href="/api/auth/wechat/start"><MessageCircle size={19}/>微信公众号登录</a>{!wechat&&<p className="tiny muted center">公众号接入完成后，可在微信内登录</p>}</>}
       <p className="login-help">{mode==='register'||mode==='bind'?'姓名或学号与名单不符？请联系管理员更正。':'忘记密码或账号被误注册？请联系管理员核实处理。'}</p>
       {mode!=='bind'&&<button className="admin-entry" onClick={()=>{setMode('login');setAdminMode(!adminMode);setError('');}}>{adminMode?'返回学生登录':'管理员登录'}</button>}
       {demo&&<div className="demo-entry"><strong className="demo-label">本地演示模式</strong><p>使用虚构班级体验完整流程，模拟时间为 17:45。</p><div><Button busy={!!busy} onClick={()=>preview('student')}><GraduationCap size={17}/>学生端体验</Button><Button busy={!!busy} onClick={()=>preview('admin')}><Users size={17}/>管理后台体验</Button></div></div>}
