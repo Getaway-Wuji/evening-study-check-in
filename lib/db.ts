@@ -38,7 +38,7 @@ export async function transaction<T>(fn: (t: Transaction) => Promise<T>): Promis
   }finally{release();}
 }
 export async function ready() {
-  if(globalDB.schemaVersion!==5){globalDB.schemaReady=undefined;globalDB.schemaVersion=5;}
+  if(globalDB.schemaVersion!==6){globalDB.schemaReady=undefined;globalDB.schemaVersion=6;}
   if (!globalDB.schemaReady) globalDB.schemaReady = migrate().catch(e=>{ globalDB.schemaReady=undefined; throw e; });
   await globalDB.schemaReady;
 }
@@ -61,6 +61,9 @@ async function migrate() {
     CREATE TABLE IF NOT EXISTS leave_items (id TEXT PRIMARY KEY, leave_id TEXT NOT NULL REFERENCES leaves(id), user_id TEXT NOT NULL REFERENCES users(id), session_id TEXT NOT NULL REFERENCES sessions(id), status TEXT NOT NULL, review_note TEXT, reviewer_id TEXT, reviewed_at INTEGER);
     CREATE UNIQUE INDEX IF NOT EXISTS one_active_leave ON leave_items(user_id,session_id) WHERE status IN ('pending','approved');
     CREATE TABLE IF NOT EXISTS files (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), name TEXT NOT NULL, content_type TEXT NOT NULL, size INTEGER NOT NULL, pathname TEXT NOT NULL, url TEXT, ready INTEGER NOT NULL DEFAULT 0, purpose TEXT NOT NULL CHECK(purpose IN ('photo','proof')), created_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS makeup_requests (id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),session_id TEXT NOT NULL REFERENCES sessions(id),status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected','withdrawn','invalid')),reason TEXT NOT NULL,photo_ids TEXT NOT NULL,failure_note TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,review_note TEXT,reviewer_id TEXT REFERENCES users(id),reviewed_at INTEGER,checkin_id TEXT REFERENCES checkins(id),rule_snapshot TEXT NOT NULL,rule_version INTEGER NOT NULL);
+    CREATE UNIQUE INDEX IF NOT EXISTS one_active_makeup ON makeup_requests(user_id,session_id) WHERE status IN ('pending','approved');
+    CREATE INDEX IF NOT EXISTS idx_makeup_status ON makeup_requests(status,created_at);
     CREATE TABLE IF NOT EXISTS email_jobs (id TEXT PRIMARY KEY, leave_id TEXT NOT NULL UNIQUE REFERENCES leaves(id), status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0, next_attempt INTEGER NOT NULL, lease_until INTEGER, provider_id TEXT, error TEXT, payload_json TEXT, created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS email_tests (id TEXT PRIMARY KEY,payload_json TEXT NOT NULL,provider_id TEXT,error TEXT,created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS email_retry_checks (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'queued',attempts INTEGER NOT NULL DEFAULT 0,message_id TEXT,provider_id TEXT,error TEXT,lease_until INTEGER,first_failure_at INTEGER,completed_at INTEGER,created_at INTEGER NOT NULL);

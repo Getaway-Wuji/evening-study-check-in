@@ -9,7 +9,7 @@ export async function GET(req:NextRequest){try{
   for(const s of d.sessions.filter(s=>!s.cancelled&&s.date>=from&&s.date<=to))for(const m of d.members.filter(m=>m.session_id===s.id)){
     const student=d.students.find(u=>u.id===m.user_id);if(!student)continue;
     const c=d.checkins.find(c=>c.session_id===s.id&&c.user_id===m.user_id),items=d.leaves.filter(l=>l.user_id===m.user_id).flatMap(l=>l.items).filter(i=>i.session_id===s.id);
-    const status=c?'实到':items.some(i=>i.status==='approved')?'已批准请假':items.some(i=>i.status==='pending')?'请假待审批':period(s.date,s.rules,d.now)==='closed'?'缺勤':'待打卡';
+    const status=c?(c.method==='makeup'?'实到（人工补签）':c.method==='manual'?'实到（管理员补录）':'实到'):items.some(i=>i.status==='approved')?'已批准请假':items.some(i=>i.status==='pending')?'请假待审批':d.makeups.some(m=>m.user_id===student.id&&m.session_id===s.id&&m.status==='pending')?'补签待审核':period(s.date,s.rules,d.now)==='closed'?'缺勤':'待打卡';
     records.push([s.date,student.code,student.name,status,c?new Date(c.submitted_at).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'}):'',c?.distance??'',c?.note??'']);
   }
   await audit(user.id,'导出考勤',{from,to,rows:records.length-1});

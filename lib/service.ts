@@ -4,21 +4,18 @@ import { ready, rows, one, run, transaction, audit, settings, rulesFor, business
 import { dateCN, validDate, addDays, period, timeMinutes, checkLocation, type Rules } from './domain';
 import { normalizeStudentCode } from './identity';
 import { rulesSchema,classCapacitySchema,classPolicySchema } from './validation';
-import {leaveLabel,leaveDeadline,needsLeaveProof,uploadLimits,validateUploadMetadata} from './class-policy';
+import {leaveLabel,leaveDeadline,needsLeaveProof} from './class-policy';
 import { databaseConfig } from './database-config';
 import type { InStatement } from '@libsql/client';
 import { readTimetable,timetableCommand,resolveRecurringDate } from './timetable';
 import {wechatSetup} from './wechat-config';
+import {attachments} from './attachments';
+import {makeupCommand,invalidateMakeups} from './makeup';
+export {attachments} from './attachments';
 export { rulesSchema } from './validation';
 
 const day=z.string().refine(validDate,'日期无效');
 
-export async function attachments(ids: string[], purpose: string, userId: string,c: Connection) {
-  const policy=(await settings(c)).policy,kind=purpose as 'photo'|'proof',limits=uploadLimits(policy,kind);
-  if(ids.length>limits.maxFiles)throw new Error(`本班最多提交 ${limits.maxFiles} 个${purpose==='photo'?'照片':'证明'}文件`);
-  if (new Set(ids).size!==ids.length) throw new Error('附件不能重复选择');
-  for (const id of ids){const file=await one('SELECT * FROM files WHERE id=? AND user_id=? AND purpose=? AND ready=1',[id,userId,purpose],c);if(!file)throw new Error('附件尚未上传完成或无权使用');validateUploadMetadata(file as {size:number;content_type:string;purpose:'photo'|'proof'},policy);}
-}
 async function member(sessionId: string, userId: string,c: Connection) {
   const s=await one('SELECT s.* FROM sessions s JOIN session_members m ON m.session_id=s.id WHERE s.id=? AND m.user_id=?',[sessionId,userId],c);
   if (!s || s.cancelled) throw new Error('本次晚自习不存在、已取消或不适用于你');
@@ -33,7 +30,7 @@ export async function createSession(date: string,c: Connection, override?: Rules
 export async function bootstrap(user: DBRow) {
   await ready();
   const admin=user.role==='admin', filter=admin?'':' WHERE user_id=?', args=admin?[]:[user.id];
-  const [config, sessions, checkins, leaves, items, students, files, jobs, logs, versions,timetable]=await Promise.all([
+  const [config, sessions, checkins, leaves, items, students, files, jobs, logs, versions,timetable,makeups]=await Promise.all([
     settings(), rows('SELECT * FROM sessions ORDER BY date'),
     rows('SELECT * FROM checkins'+filter,args), rows('SELECT * FROM leaves'+filter,args), rows<DBRow & {status:string}>('SELECT * FROM leave_items'+filter,args),
     admin?rows("SELECT id,code,name,role,active,CASE WHEN password_hash IS NOT NULL OR openid IS NOT NULL THEN 1 ELSE 0 END AS registered,CASE WHEN openid IS NOT NULL THEN 1 ELSE 0 END AS wechat FROM users WHERE role='student' ORDER BY code"):rows('SELECT id,code,name,role,active FROM users WHERE id=?',[user.id]),
@@ -42,12 +39,14 @@ export async function bootstrap(user: DBRow) {
     admin?rows('SELECT a.*,u.name FROM audit_logs a LEFT JOIN users u ON a.user_id=u.id ORDER BY a.created_at DESC LIMIT 60'):Promise.resolve([]),
     rows('SELECT * FROM defaults_versions ORDER BY effective_from DESC,created_at DESC'),
     readTimetable(db()),
+    rows('SELECT * FROM makeup_requests'+filter+' ORDER BY created_at DESC',args),
   ]);
   const members=admin?await rows('SELECT * FROM session_members'):await rows('SELECT * FROM session_members WHERE user_id=?',[user.id]);
   const studentCount=admin?students.length:Number((await one("SELECT COUNT(*) n FROM users WHERE role='student'")).n);
   return { user,studentCount,...timetable,recurring:admin?timetable.recurring:[],terms:admin?timetable.terms:timetable.terms.filter(t=>t.id===config.currentTermId),settings:admin?config:{className:config.className,capacity:config.capacity,locationConfigured:config.locationConfigured,currentTermId:config.currentTermId,policy:config.policy,adminEmails:undefined},
     sessions:sessions.filter(s=>admin||members.some(m=>m.session_id===s.id)).map(s=>({...s,rules:JSON.parse(s.rules_json),rules_json:undefined}) as DBRow & {rules:Rules}),
-    checkins:checkins.map(c=>({...c,photoIds:JSON.parse(c.photo_ids),rule_snapshot:undefined,source_coords:undefined}) as DBRow & {photoIds:string[]}),
+    checkins:checkins.map(c=>({...c,method:c.source_coords==='manual'?'manual':c.source_coords?.startsWith('makeup:')?'makeup':'standard',photoIds:JSON.parse(c.photo_ids),rule_snapshot:undefined,source_coords:undefined}) as DBRow & {photoIds:string[];method:string}),
+    makeups:makeups.map(m=>({...m,locationName:JSON.parse(m.rule_snapshot).locationName,photoIds:JSON.parse(m.photo_ids),rule_snapshot:undefined}) as DBRow & {photoIds:string[];locationName:string}),
     leaves:leaves.map(l=>({...l,kindLabel:leaveLabel(l as {kind:string},config.policy),proofIds:JSON.parse(l.proof_ids),items:items.filter(i=>i.leave_id===l.id)}) as DBRow & {kindLabel:string;proofIds:string[];items:(DBRow & {status:string})[]}),
     students,files,jobs,logs,members,defaults:versions.map(v=>({...v,rules:JSON.parse(v.rules_json),rules_json:undefined}) as DBRow & {rules:Rules}),
     now:businessNow(),demo:demoMode(),wechat:{oauth:wechatSetup().oauthConfigured,location:wechatSetup().locationConfigured},integrations:admin?{
@@ -59,9 +58,10 @@ export async function bootstrap(user: DBRow) {
 }
 export async function command(user: DBRow, raw: unknown): Promise<Record<string,any>> {
   const {action,data}=z.object({action:z.string(),data:z.any()}).parse(raw);
-  const studentActions=['checkin','leave.create','leave.withdraw'];
+  const studentActions=['checkin','leave.create','leave.withdraw','makeup.create','makeup.withdraw'];
   if (studentActions.includes(action) ? user.role!=='student' : user.role!=='admin') throw new HTTPError(403,'没有执行此操作的权限');
   return transaction(async tx=>{
+    if(action.startsWith('makeup.'))return makeupCommand(user,action,data,tx);
     if(action.startsWith('term.')||action.startsWith('recurrence.'))return timetableCommand(user,action,data,tx);
     if (action==='checkin') {
       const policy=(await settings(tx)).policy;
@@ -89,6 +89,7 @@ export async function command(user: DBRow, raw: unknown): Promise<Record<string,
         JSON.stringify({latitude:input.latitude,longitude:input.longitude,system:input.coordinateSystem}),JSON.stringify(input.photoIds),input.note,s.rules_json,s.version,
       ],tx);
       await run("UPDATE leave_items SET status='invalid',review_note='本人已完成打卡，此场次申请自动失效',reviewed_at=? WHERE session_id=? AND user_id=? AND status='pending'",[Date.now(),s.id,user.id],tx);
+      await invalidateMakeups(s.id,user.id,'本人已完成正常打卡，无需补签',tx);
       await audit(user.id,'打卡成功',{session:s.date,distance:location?.distance},tx);
       return {message:'打卡成功，今晚也要保持专注',id};
     }
@@ -131,6 +132,7 @@ export async function command(user: DBRow, raw: unknown): Promise<Record<string,
         let status=input.decision;
         if(status==='approved'&&await one('SELECT id FROM checkins WHERE session_id=? AND user_id=?',[item.session_id,item.user_id],tx)) throw new Error('学生已经打卡，请刷新后重新核对');
         await run('UPDATE leave_items SET status=?,review_note=?,reviewer_id=?,reviewed_at=? WHERE id=?',[status,input.note,user.id,Date.now(),item.id],tx);changed++;
+        if(status==='approved')await invalidateMakeups(item.session_id,item.user_id,'本场请假已通过，补签申请失效',tx);
       }
       if(!changed) throw new Error('申请状态已改变，请刷新后查看');
       await audit(user.id,'审批请假',input,tx);return {message:'审批结果已同步给学生'};
@@ -228,6 +230,7 @@ export async function command(user: DBRow, raw: unknown): Promise<Record<string,
       if(await one("SELECT id FROM leave_items WHERE session_id=? AND user_id=? AND status='approved'",[s.id,input.studentId],tx))throw new Error('请先撤销该场次已批准的请假');
       await run('INSERT INTO checkins(id,session_id,user_id,submitted_at,source_coords,note,rule_snapshot,rule_version) VALUES(?,?,?,?,?,?,?,?)',[crypto.randomUUID(),s.id,input.studentId,businessNow(),'manual',`管理员补录：${input.reason}`,s.rules_json,s.version],tx);
       await run("UPDATE leave_items SET status='invalid',review_note='管理员补录签到',reviewed_at=? WHERE session_id=? AND user_id=? AND status='pending'",[Date.now(),s.id,input.studentId],tx);
+      await invalidateMakeups(s.id,input.studentId,'管理员已直接补录签到，无需重复补签',tx);
       await audit(user.id,'人工补录签到',input,tx);return {message:'已补录并保存操作原因'};
     }
     if(action==='email.retry'){

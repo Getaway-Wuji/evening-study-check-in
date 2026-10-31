@@ -5,6 +5,7 @@ export interface ClassPolicy {
   leave:{maxSessions:number;reasonMinLength:number;reasonMaxLength:number;deadline:'open'|'studyStart'|'close';advanceMinutes:number};
   uploads:{photoMaxFiles:number;proofMaxFiles:number;photoMaxMB:number;proofMaxMB:number;proofPdfEnabled:boolean};
   notifications:{enabled:boolean;maxAttempts:number;retryMinutes:number[]};
+  makeup:{enabled:boolean;hoursAfterClose:number};
   noteMaxLength:number;studentNotice:string;
 }
 export const defaultClassPolicy:ClassPolicy={
@@ -12,10 +13,11 @@ export const defaultClassPolicy:ClassPolicy={
   leave:{maxSessions:30,reasonMinLength:2,reasonMaxLength:1000,deadline:'close',advanceMinutes:0},
   uploads:{photoMaxFiles:5,proofMaxFiles:5,photoMaxMB:10,proofMaxMB:10,proofPdfEnabled:true},
   notifications:{enabled:true,maxAttempts:5,retryMinutes:[1,5,15,60,180]},noteMaxLength:500,studentNotice:'',
+  makeup:{enabled:true,hoursAfterClose:24},
 };
 export function resolveClassPolicy(value?:Partial<ClassPolicy>|null):ClassPolicy{
   const defaults=structuredClone(defaultClassPolicy);
-  return {...defaults,...value,leave:{...defaults.leave,...value?.leave},uploads:{...defaults.uploads,...value?.uploads},notifications:{...defaults.notifications,...value?.notifications,retryMinutes:[...(value?.notifications?.retryMinutes??defaults.notifications.retryMinutes)]},leaveTypes:structuredClone(value?.leaveTypes??defaults.leaveTypes)};
+  return {...defaults,...value,leave:{...defaults.leave,...value?.leave},uploads:{...defaults.uploads,...value?.uploads},makeup:{...defaults.makeup,...value?.makeup},notifications:{...defaults.notifications,...value?.notifications,retryMinutes:[...(value?.notifications?.retryMinutes??defaults.notifications.retryMinutes)]},leaveTypes:structuredClone(value?.leaveTypes??defaults.leaveTypes)};
 }
 export function leaveLabel(leave:{kind:string;kindLabel?:string|null;kind_label?:string|null},policy:ClassPolicy){
   return leave.kindLabel||leave.kind_label||(Object.hasOwn(leaveKinds,leave.kind)?leaveKinds[leave.kind]:undefined)||policy.leaveTypes.find(t=>t.id===leave.kind)?.name||leave.kind;
@@ -24,6 +26,9 @@ export function needsLeaveProof(rules:Rules,type:LeaveType){return Object.hasOwn
 export function leaveDeadline(date:string,rules:Rules,policy:ClassPolicy){
   const key=policy.leave.deadline;
   return Date.parse(`${date}T${rules[key]}:00+08:00`)+(key==='close'?60000:0)-policy.leave.advanceMinutes*60000;
+}
+export function makeupWindow(date:string,rules:Rules,policy:ClassPolicy){
+  return {opensAt:Date.parse(`${date}T${rules.open}:00+08:00`),closesAt:Date.parse(`${date}T${rules.close}:00+08:00`)+60000+policy.makeup.hoursAfterClose*3600000};
 }
 export function uploadLimits(policy:ClassPolicy,purpose:'photo'|'proof'){
   return {maxFiles:purpose==='photo'?policy.uploads.photoMaxFiles:policy.uploads.proofMaxFiles,maxMB:purpose==='photo'?policy.uploads.photoMaxMB:policy.uploads.proofMaxMB,

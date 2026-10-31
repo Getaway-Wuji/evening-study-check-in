@@ -24,10 +24,10 @@ export function Dialog({title,children,onClose,wide=false}:{title:string;childre
   return <div className="dialog-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}><div ref={ref} role="dialog" aria-modal="true" aria-label={title} className={`dialog ${wide?'wide':''}`}><div className="dialog-head"><h2>{title}</h2><button type="button" className="icon-button" aria-label="关闭" onClick={onClose}><X size={20}/></button></div><div className="dialog-body">{children}</div></div></div>;
 }
 export interface Uploaded {id:string;name:string}
-export function UploadField({purpose,value,onChange,cameraOnly=false,limits=uploadLimits(defaultClassPolicy,purpose)}:{purpose:'photo'|'proof';value:Uploaded[];onChange:(value:Uploaded[])=>void;cameraOnly?:boolean;limits?:ReturnType<typeof uploadLimits>}){
+export function UploadField({purpose,value,onChange,cameraOnly=false,limits=uploadLimits(defaultClassPolicy,purpose),onUploadingChange}:{purpose:'photo'|'proof';value:Uploaded[];onChange:(value:Uploaded[])=>void;cameraOnly?:boolean;limits?:ReturnType<typeof uploadLimits>;onUploadingChange?:(busy:boolean)=>void}){
   const [busy,setBusy]=useState(false),[error,setError]=useState('');
   async function add(list:FileList|null){
-    if(!list)return;setError('');setBusy(true);let next=[...value];
+    if(!list)return;setError('');setBusy(true);onUploadingChange?.(true);let next=[...value];
     try{if(list.length+next.length>limits.maxFiles)throw new Error(`最多上传 ${limits.maxFiles} 个文件`);
       for(const file of Array.from(list)){
         if(file.size>limits.maxMB*1024*1024)throw new Error(`每个文件不超过 ${limits.maxMB} MB`);
@@ -38,7 +38,7 @@ export function UploadField({purpose,value,onChange,cameraOnly=false,limits=uplo
         else{await upload(init.pathname,file,{access:'private',handleUploadUrl:'/api/files/token',clientPayload:JSON.stringify({id:init.id}),multipart:file.size>4*1024*1024});result=await api(`/api/files/${init.id}`,{});}
         next=[...next,{id:result.id,name:result.name}];onChange(next);
       }
-    }catch(e){setError(e instanceof Error?e.message:'上传失败');}finally{setBusy(false);}
+    }catch(e){setError(e instanceof Error?e.message:'上传失败');}finally{setBusy(false);onUploadingChange?.(false);}
   }
   return <div className="upload-field"><label className={`upload-zone ${busy?'uploading':''}`}>
     {busy?<LoaderCircle className="spin" size={25}/>:<UploadCloud size={25}/>}<strong>{busy?'正在安全上传…':purpose==='photo'?(cameraOnly?'拍摄打卡照片':'拍摄或上传照片'):'点击上传证明材料'}</strong><span>{limits.allowedTypes.includes('application/pdf')?'JPG、PNG、PDF':'JPG、PNG'} · 最多 {limits.maxFiles} 个 · 每个 {limits.maxMB} MB 以内</span>

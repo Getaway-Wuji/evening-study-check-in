@@ -27,6 +27,7 @@ export default function PolicySettings(){
         </tr>)}</tbody></table></div>
       </div>
       <div className="policy-grid">
+        <div className="policy-section"><h3>定位失败后的人工补签</h3><label className="check-label"><input type="checkbox" checked={draft.makeup.enabled} onChange={e=>setDraft(p=>({...p,makeup:{...p.makeup,enabled:e.target.checked}}))}/>允许学生上传现场照片和说明申请补签</label><label>正常打卡截止后允许申请的小时数<input type="number" required min={1} max={720} value={draft.makeup.hoursAfterClose} onChange={e=>setDraft(p=>({...p,makeup:{...p.makeup,hoursAfterClose:+e.target.value}}))}/></label><p className="field-hint">申请从本场打卡开放时开始接受，现场照片必填，数量与大小沿用打卡照片限制。审核通过才计入出勤；关闭入口或超过申请期限不影响已提交申请的审核。</p></div>
         <div className="policy-section"><h3>请假提交规则</h3><div className="form-grid">
           <label>单次最多请假场数<input type="number" required min={1} max={366} value={draft.leave.maxSessions} onChange={e=>leaveNumber('maxSessions',+e.target.value)}/></label>
           <label>必填说明最少字数<input type="number" required min={1} max={5000} value={draft.leave.reasonMinLength} onChange={e=>leaveNumber('reasonMinLength',+e.target.value)}/></label>
