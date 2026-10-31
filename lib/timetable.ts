@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { InStatement } from '@libsql/client';
 import { rows,one,run,settings,audit,businessNow,type Connection,type DBRow } from './db';
-import { daySchema,rulesSchema } from './validation';
+import { daySchema,rulesSchema,weekdaysSchema } from './validation';
 import { defaultRules,dateCN,period,type Rules } from './domain';
 import { semesterDate,semesterWeek,rangesOverlap,resolveWeeklyRules,weekdayName,type AcademicTerm,type WeeklyRule } from './timetable-domain';
 
@@ -58,8 +58,12 @@ export async function resolveRecurringDate(date:string,c:Connection):Promise<{te
   const v=await one('SELECT rules_json FROM defaults_versions WHERE effective_from<=? ORDER BY effective_from DESC,created_at DESC LIMIT 1',[date],c);
   return {term,rule,rules:resolveWeeklyRules(rule,v?JSON.parse(v.rules_json):defaultRules),week};
 }
-const termInput=z.object({id:z.string().optional(),name:z.string().trim().min(1).max(60),firstMonday:daySchema.refine(d=>new Date(d).getUTCDay()===1,'第 1 周起点必须是周一'),totalWeeks:z.number().int().min(1).max(60),weekdays:z.array(z.number().int().min(0).max(6)).min(1).max(7).refine(a=>new Set(a).size===a.length)});
+const termInput=z.object({id:z.string().optional(),name:z.string().trim().min(1).max(60),firstMonday:daySchema.refine(d=>new Date(d).getUTCDay()===1,'第 1 周起点必须是周一'),totalWeeks:z.number().int().min(1).max(60),weekdays:weekdaysSchema});
 const recurrenceInput=z.object({id:z.string().optional(),termId:z.string(),weekday:z.number().int().min(0).max(6),startWeek:z.number().int().min(1),endWeek:z.number().int().min(1),inheritTime:z.boolean().default(true),enabled:z.boolean().default(true),rules:rulesSchema});
+async function disableRemovedWeekdays(termId:string,weekdays:number[],c:Connection){
+  // Keep rule records and published sessions; the publication preview handles future cancellations.
+  await run(`UPDATE recurring_rules SET enabled=0 WHERE term_id=? AND weekday NOT IN (${weekdays.map(()=>'?').join(',')})`,[termId,...weekdays],c);
+}
 async function validateRange(input:{id?:string;termId:string;weekday:number;startWeek:number;endWeek:number;enabled:boolean},c:Connection){
   const {terms,recurring}=await readTimetable(c),term=terms.find(t=>t.id===input.termId);
   if(!term)throw new Error('请先设置学期');
@@ -69,12 +73,22 @@ async function validateRange(input:{id?:string;termId:string;weekday:number;star
   return term;
 }
 export async function timetableCommand(user:DBRow,action:string,data:unknown,c:Connection):Promise<Record<string,any>>{
+  if(action==='term.weekdays'){
+    const input=z.object({id:z.string(),revision:z.number().int(),weekdays:weekdaysSchema}).parse(data);
+    const term=await one('SELECT * FROM academic_terms WHERE id=?',[input.id],c);
+    if(!term)throw new Error('学期不存在，请先设置学期');
+    if(term.revision!==input.revision)throw new Error('学期安排已发生变化，请刷新后重新选择星期');
+    await run('UPDATE academic_terms SET weekdays_json=?,revision=revision+1 WHERE id=?',[JSON.stringify(input.weekdays),input.id],c);
+    await disableRemovedWeekdays(input.id,input.weekdays,c);
+    await audit(user.id,'设置每周晚自习星期',input,c);
+    return {message:'每周星期已保存；请配置教室并预览发布，才会更新学生安排'};
+  }
   if(action==='term.save'){
     const input=termInput.parse(data),id=input.id||crypto.randomUUID(),old=input.id?await one('SELECT * FROM academic_terms WHERE id=?',[id],c):undefined;
     if(input.id&&!old)throw new Error('学期不存在');
     if(old&&(old.first_monday!==input.firstMonday||old.total_weeks!==input.totalWeeks)&&await one('SELECT id FROM sessions WHERE term_id=? LIMIT 1',[id],c))throw new Error('已发布学期的周次起点和总周数不能直接改动，请新建学期，避免历史周次错位');
-    if(old&&await one(`SELECT id FROM recurring_rules WHERE term_id=? AND enabled=1 AND weekday NOT IN (${input.weekdays.map(()=>'?').join(',')}) LIMIT 1`,[id,...input.weekdays],c))throw new Error('请先停用被移除星期的周次规则，再调整学期星期');
     await run('INSERT INTO academic_terms(id,name,first_monday,total_weeks,weekdays_json,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,first_monday=excluded.first_monday,total_weeks=excluded.total_weeks,weekdays_json=excluded.weekdays_json,revision=academic_terms.revision+1',[id,input.name,input.firstMonday,input.totalWeeks,JSON.stringify(input.weekdays),Date.now()],c);
+    await disableRemovedWeekdays(id,input.weekdays,c);
     const config=await settings(c);await run('UPDATE settings SET value=? WHERE id=1',[JSON.stringify({...config,currentTermId:id})],c);
     await audit(user.id,'设置学期周次',input,c);return {message:'学期已保存，请按星期添加各段周次的教室',id};
   }

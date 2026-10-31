@@ -7,7 +7,7 @@ export interface Rules {
   locationRequired: boolean; accuracyLimit: number; locationMaxAge: number;
   locationConfirmed?: boolean; photoEnabled?: boolean; noteEnabled?: boolean;
   photoRequired: boolean; cameraOnly: boolean; noteRequired: boolean;
-  proofRequired: Record<LeaveKind, boolean>; weekdays: number[];
+  proofRequired: Record<LeaveKind, boolean>;
 }
 export const defaultRules: Rules = {
   studyStart: '18:00', open: '17:30', close: '18:05',
@@ -15,7 +15,7 @@ export const defaultRules: Rules = {
   radius: 100, locationRequired: true, accuracyLimit: 50, locationMaxAge: 60,
   locationConfirmed: false, photoEnabled: false, noteEnabled: false,
   photoRequired: false, cameraOnly: true, noteRequired: false,
-  proofRequired: { personal: true, sick: true, free: true }, weekdays: [0, 2, 3],
+  proofRequired: { personal: true, sick: true, free: true },
 };
 export function dateCN(now = Date.now()) { return new Date(now + 8 * 3600000).toISOString().slice(0, 10); }
 export function minuteCN(now = Date.now()) { const d = new Date(now + 8 * 3600000); return d.getUTCHours() * 60 + d.getUTCMinutes(); }

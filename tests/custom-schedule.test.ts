@@ -36,4 +36,32 @@ test('修改默认时间只更新沿用它的场次，单日时间和独立周�
   const inherited=await saved(monday);assert.equal(inherited.open,'18:40');assert.equal(inherited.studyStart,'19:00');assert.equal(inherited.close,'19:20');
   assert.equal((await saved(thursday)).close,'21:30');assert.equal((await saved(saturday)).close,'20:45');
 });
+test('管理员修改每周星期会保存天数并停用移除规则，预览发布前不影响学生场次',async()=>{
+  const current=await one('SELECT revision FROM academic_terms WHERE id=?',[termId]);
+  await command(admin,{action:'term.weekdays',data:{id:termId,revision:current.revision,weekdays:[4,1]}});
+  const term=await one('SELECT * FROM academic_terms WHERE id=?',[termId]);
+  assert.deepEqual(JSON.parse(term.weekdays_json),[1,4]);
+  assert.equal(term.revision,current.revision+1);
+  assert.equal((await one('SELECT enabled FROM recurring_rules WHERE term_id=? AND weekday=6',[termId])).enabled,0);
+  const saturday=semesterDate(monday,1,6),thursday=semesterDate(monday,1,4);
+  assert.equal((await one('SELECT cancelled FROM sessions WHERE date=?',[saturday])).cancelled,0);
+  const plan=(await command(admin,{action:'term.preview',data:{id:termId}})).plan;
+  assert.equal(plan.counts.cancel,2);assert.equal(plan.counts.protected,1);
+  await command(admin,{action:'term.publish',data:{id:termId,revision:plan.revision}});
+  assert.equal((await one('SELECT cancelled FROM sessions WHERE date=?',[saturday])).cancelled,1);
+  assert.equal((await saved(thursday)).close,'21:30');
+  assert.equal((await one('SELECT cancelled FROM sessions WHERE date=?',[monday])).cancelled,0);
+});
+test('星期设置支持每周七天，拒绝空选、重复、过期版本及学生修改',async()=>{
+  const input={id:termId,revision:(await one('SELECT revision FROM academic_terms WHERE id=?',[termId])).revision};
+  await assert.rejects(command(admin,{action:'term.weekdays',data:{...input,weekdays:[]}}));
+  await assert.rejects(command(admin,{action:'term.weekdays',data:{...input,weekdays:[1,1]}}));
+  await assert.rejects(command(admin,{action:'term.weekdays',data:{...input,weekdays:[7]}}));
+  await assert.rejects(command({id:'student',role:'student'} as any,{action:'term.weekdays',data:{...input,weekdays:[1]}}),/权限/);
+  await command(admin,{action:'term.weekdays',data:{...input,weekdays:[0,6,5,4,3,2,1]}});
+  assert.deepEqual(JSON.parse((await one('SELECT weekdays_json FROM academic_terms WHERE id=?',[termId])).weekdays_json),[1,2,3,4,5,6,0]);
+  await assert.rejects(command(admin,{action:'term.weekdays',data:{...input,weekdays:[2]}}),/已发生变化/);
+  // Re-selecting a removed day retains its old rules as disabled until the administrator enables them.
+  assert.equal((await one('SELECT enabled FROM recurring_rules WHERE term_id=? AND weekday=6',[termId])).enabled,0);
+});
 test.after(()=>db().close());
