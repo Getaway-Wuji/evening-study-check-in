@@ -17,6 +17,7 @@
   "dependencies": {
     "@libsql/client": "^0.18.0",
     "@vercel/blob": "latest",
+    "leaflet": "1.9.4",
     "lucide-react": "latest",
     "next": "16.4.3",
     "react": "latest",
@@ -24,11 +25,14 @@
     "zod": "latest"
   },
   "devDependencies": {
+    "@types/leaflet": "1.9.22",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "tsx": "latest",
     "typescript": "latest"
   },
-  "engines": { "node": ">=22" }
+  "engines": {
+    "node": ">=22"
+  }
 }

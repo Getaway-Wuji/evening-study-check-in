@@ -394,6 +394,31 @@ button,.button,.check-label,.weekday-choice {touch-action:manipulation;}
 .mail-setup-status span,.mail-test-box p {overflow-wrap:anywhere;}
 .mail-test-box .button {justify-self:start;}
 .mail-retry-actions {display:flex;flex-wrap:wrap;gap:12px;min-width:0;}
+.fence-preview {display:grid;gap:12px;padding:16px;border:1px solid #d5e1ee;border-radius:20px;background:#f3f8fc;min-width:0;}
+.fence-heading {display:flex;gap:12px;align-items:flex-start;justify-content:space-between;}
+.fence-heading>div {display:grid;gap:5px;min-width:0;}
+.fence-heading strong,.location-guide>strong {color:var(--clay-ink);}
+.fence-heading span {font-size:12px;color:var(--clay-muted);overflow-wrap:anywhere;}
+.fence-stage {position:relative;isolation:isolate;height:300px;overflow:hidden;border:1px solid #d5e1ee;border-radius:14px;background:#edf4fa;z-index:0;}
+.fence-stage>svg {display:block;width:100%;height:100%;}
+.fence-map {height:100%;width:100%;background:#edf4fa;}
+.fence-map .leaflet-control-attribution {font-size:10px;max-width:100%;white-space:normal;}
+.fence-map .leaflet-control-attribution a {color:#2c629b;}
+.fence-loading {position:absolute;z-index:500;bottom:24px;left:12px;right:12px;padding:9px 12px;border-radius:10px;background:#f8fbfff0;font-size:12px;pointer-events:none;}
+.fence-legend,.fence-controls {display:flex;gap:12px;flex-wrap:wrap;align-items:center;}
+.fence-legend {font-size:11px;color:var(--clay-muted);}
+.fence-legend>span {display:flex;align-items:center;gap:6px;}
+.fence-legend i {width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.fence-blue {background:#477fbd;}.fence-orange {background:#ce863b;}
+.fence-result,.location-guide {display:grid;gap:10px;padding:14px;border-radius:14px;background:#e7f0fa;font-size:13px;line-height:1.7;min-width:0;overflow-wrap:anywhere;}
+.fence-result.pass {background:#e8f3ee;color:#2d6550;}.fence-result.fail {background:#fcf0e3;color:#805529;}
+.fence-result .button {justify-self:start;max-width:100%;white-space:normal;}
+.fence-empty {display:grid;justify-items:center;gap:10px;padding:26px 16px;border:1px dashed #b7cce1;border-radius:16px;color:var(--clay-muted);text-align:center;}
+.location-guide ol {margin:0;padding-left:20px;color:var(--clay-muted);}
+.location-guide li+li {margin-top:8px;}
+.location-progress {display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px;border-radius:14px;background:#e7f0fa;color:#3c638c;font-size:13px;}
+.location-progress>span {min-width:0;overflow-wrap:anywhere;}.location-progress .button {flex-shrink:0;}
+@media(max-width:600px){.fence-preview{padding:12px}.fence-stage{height:270px}.fence-heading{flex-wrap:wrap}.fence-controls{display:grid;grid-template-columns:1fr}.fence-controls .button{width:100%;white-space:normal}.point-actions .button{width:100%;white-space:normal}.location-progress{align-items:stretch;flex-direction:column}}
 @media(max-width:780px){.mail-setup-status{grid-template-columns:1fr}.mail-setup-body{padding:0 18px 22px}.mail-setup-card .card-heading .button,.mail-test-box .button{width:100%}}
 @media(max-width:780px){.wechat-setup-status{grid-template-columns:1fr}.wechat-setup-body{padding:0 18px 22px}.wechat-menu-link>div{flex-wrap:wrap}.wechat-menu-link input{font-size:16px;flex-basis:100%}.wechat-setup-card .card-heading .button{width:100%}}
 @media(max-width:780px){

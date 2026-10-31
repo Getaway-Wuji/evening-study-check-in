@@ -2,18 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {acquireLocation} from '../lib/wechat-browser';
 const originals=new Map(['window','navigator','location','fetch'].map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
-let nativeCalls=0,signatureCalls=0,wxCalls=0,mode:'ok'|'cancel'|'cancel-fail'|'deny'|'invalid'|'bad-signature'='ok';
+let nativeCalls=0,signatureCalls=0,wxCalls=0,mode:'ok'|'cancel'|'cancel-fail'|'deny'|'invalid'|'bad-signature'|'pending'='ok';
 let onReady=()=>{},onError=()=>{};
 let href='https://study.example.test/student';
 const wx={
-  config:()=>{queueMicrotask(()=>mode==='bad-signature'?onError():onReady());},
+  config:()=>{queueMicrotask(()=>{if(mode!=='pending')mode==='bad-signature'?onError():onReady();});},
   ready:(callback:()=>void)=>{onReady=callback;},error:(callback:()=>void)=>{onError=callback;},
   checkJsApi:({success}:any)=>success({checkResult:{getLocation:true}}),
   getLocation:({success,fail,cancel}:any)=>{wxCalls++;if(mode==='cancel')cancel();else if(mode==='cancel-fail')fail({errMsg:'getLocation:cancel'});else if(mode==='deny')fail({errMsg:'getLocation:fail auth deny'});else success({latitude:31.1,longitude:121.2,accuracy:mode==='invalid'?undefined:15});},
 };
 Object.defineProperty(globalThis,'window',{configurable:true,value:{isSecureContext:true,wx,__studyEntryURL:href}});
 Object.defineProperty(globalThis,'location',{configurable:true,value:{get href(){return href;}}});
-Object.defineProperty(globalThis,'navigator',{configurable:true,value:{userAgent:'Android MicroMessenger',geolocation:{getCurrentPosition:(success:any)=>{nativeCalls++;success({coords:{latitude:31.1,longitude:121.2,accuracy:20}});}}}});
+Object.defineProperty(globalThis,'navigator',{configurable:true,value:{userAgent:'Android MicroMessenger',geolocation:{getCurrentPosition:(success:any)=>{nativeCalls++;success({timestamp:Date.now(),coords:{latitude:31.1,longitude:121.2,accuracy:20}});}}}});
 Object.defineProperty(globalThis,'fetch',{configurable:true,value:async(_input:unknown,init:RequestInit)=>{signatureCalls++;assert.equal(JSON.parse(String(init.body)).url,href.split('#')[0]);return new Response(JSON.stringify({appId:'fixture-app',timestamp:1,nonceStr:'fixture',signature:'fixture'}),{headers:{'Content-Type':'application/json'}});}});
 
 test('微信准备完成后取定位，同一页面复用配置，返回 GCJ-02 和真实精度',async()=>{
@@ -37,5 +37,9 @@ test('页面切换后的签名失败可重试，恢复后重新使用微信定�
 });
 test('未接通微信定位时直接使用系统定位，不请求微信签名',async()=>{
   const previous=signatureCalls,value=await acquireLocation(false);assert.equal(value.source,'system');assert.equal(value.fallback,false);assert.equal(signatureCalls,previous);
+});
+test('微信准备阶段也能取消，迟到的 ready 不会继续调取位置或触发系统回退',async()=>{
+  mode='pending';href='https://study.example.test/student?test=abort';const beforeNative=nativeCalls,beforeWx=wxCalls,controller=new AbortController();
+  const request=acquireLocation(true,{signal:controller.signal});await new Promise(r=>setTimeout(r,0));controller.abort();await assert.rejects(request,/已取消/);onReady();await Promise.resolve();assert.equal(nativeCalls,beforeNative);assert.equal(wxCalls,beforeWx);mode='ok';
 });
 test.after(()=>{for(const [name,descriptor] of originals){if(descriptor)Object.defineProperty(globalThis,name,descriptor);else Reflect.deleteProperty(globalThis,name);}});

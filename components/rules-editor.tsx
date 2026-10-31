@@ -3,19 +3,23 @@ import { useState,type ReactNode } from 'react';
 import { Clock3,MapPin,FileText,LocateFixed,ArrowUpRight } from 'lucide-react';
 import { Button } from './common';
 import {useStore} from './store';
-import {acquireLocation} from '@/lib/wechat-browser';
+import {useLocationRequest} from './use-location-request';
+import GeofencePreview from './geofence-preview';
+import {validFence} from '@/lib/geofence';
+import type {StudyLocation} from '@/lib/location';
 import {needsLeaveProof} from '@/lib/class-policy';
 import { wgsToGcj,type Rules } from '@/lib/domain';
 export default function RulesEditor({initial,onSave,busy,label,children,inheritTime=false,defaultTime}:{initial:Rules;onSave:(rules:Rules,form:FormData)=>void;busy:boolean;label:string;children?:ReactNode;inheritTime?:boolean;defaultTime?:Pick<Rules,'open'|'close'|'studyStart'>}){
   const {d}=useStore(),types=d.settings.policy.leaveTypes.filter(t=>t.enabled);
-  const [r,setR]=useState<Rules>(structuredClone(initial)),[locating,setLocating]=useState(false),[locationError,setLocationError]=useState('');
+  const [r,setR]=useState<Rules>(structuredClone(initial)),[sample,setSample]=useState<StudyLocation|null>(null);
+  const {locate,busy:locating,error:locationError,setError:setLocationError,progress,cancel}=useLocationRequest(d.wechat.location);
   const display=inheritTime&&defaultTime?{...r,open:defaultTime.open,close:defaultTime.close,studyStart:defaultTime.studyStart}:r;
   const photo=!!(r.photoEnabled??r.photoRequired),note=!!(r.noteEnabled??r.noteRequired);
-  const update=(key:keyof Rules,value:unknown)=>setR(v=>({...v,[key]:value,...(['locationName','latitude','longitude'].includes(key)?{locationConfirmed:false}:{}),...(key==='photoEnabled'&&!value?{photoRequired:false}:{}),...(key==='noteEnabled'&&!value?{noteRequired:false}:{})}));
+  const update=(key:keyof Rules,value:unknown)=>setR(v=>({...v,[key]:value,...(['locationName','latitude','longitude','radius'].includes(key)?{locationConfirmed:false}:{}),...(key==='photoEnabled'&&!value?{photoRequired:false}:{}),...(key==='noteEnabled'&&!value?{noteRequired:false}:{})}));
   async function capturePoint(){
-    setLocationError('');setLocating(true);
-    try{const {position:p}=await acquireLocation(d.wechat.location);const [latitude,longitude]=p.coordinateSystem==='wgs84'?wgsToGcj(p.latitude,p.longitude):[p.latitude,p.longitude];setR(v=>({...v,latitude:+latitude.toFixed(6),longitude:+longitude.toFixed(6),locationConfirmed:false}));if(p.accuracy>r.accuracyLimit)setLocationError('当前位置精度较低，保存前请在地图上核对点位。');}
-    catch(error){setLocationError(error instanceof Error?error.message:'无法获取位置，请检查权限或通过地图取点填写。');}finally{setLocating(false);}
+    const result=await locate(r);if(!result)return;const p=result.position;setSample(p);
+    if(p.accuracy>r.accuracyLimit){setLocationError(`本次精度约 ${Math.round(p.accuracy)} 米，未达到 ${r.accuracyLimit} 米要求，原有打卡中心未修改。可到窗边重试，或在地图上核对后选点。`);return;}
+    const [latitude,longitude]=p.coordinateSystem==='wgs84'?wgsToGcj(p.latitude,p.longitude):[p.latitude,p.longitude];setR(v=>({...v,latitude:+latitude.toFixed(6),longitude:+longitude.toFixed(6),locationConfirmed:false}));
   }
   return <form className="form-stack" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);onSave({...display,open:String(f.get('open')||display.open),close:String(f.get('close')||display.close),studyStart:String(f.get('studyStart')||display.studyStart),photoEnabled:photo,noteEnabled:note,proofRequired:{...r.proofRequired,...Object.fromEntries(types.map(type=>[type.id,needsLeaveProof(r,type)]))}},f);}}>
     {children}<div className="form-section-title"><Clock3 size={17}/>打卡时间{inheritTime&&<span className="optional">沿用默认时间</span>}</div>
@@ -23,12 +27,16 @@ export default function RulesEditor({initial,onSave,busy,label,children,inheritT
     <p className="field-hint">时间按北京时间设置，可自行填写。截止时间包含对应分钟，下一分钟起不能提交。</p>
     <div className="form-section-title"><MapPin size={17}/>教室与定位范围</div>
     <label>教室或地点名称<input required maxLength={80} value={r.locationName} onChange={e=>update('locationName',e.target.value)} placeholder="例如：教学楼与教室编号"/></label>
-    <div className="button-row point-actions"><Button type="button" busy={locating} onClick={capturePoint}><LocateFixed size={16}/>把当前位置设为打卡点</Button><a href="https://lbs.qq.com/getPoint/" target="_blank" rel="noreferrer" className="button">地图取点<ArrowUpRight size={14}/></a></div>
+    <div className="button-row point-actions"><Button type="button" busy={locating} onClick={capturePoint}><LocateFixed size={16}/>把当前位置设为打卡点</Button><Button type="button" busy={locating} disabled={!validFence(r)} onClick={async()=>{const result=await locate(r);if(result)setSample(result.position);}}>现场试测（不修改地点）</Button><a href="https://lbs.qq.com/getPoint/" target="_blank" rel="noreferrer" className="button">地图取点<ArrowUpRight size={14}/></a></div>
+    {locating&&<div className="location-progress" role="status"><span>{progress}</span><Button type="button" onClick={cancel}>取消定位</Button></div>}
     <p className="field-hint">可在教室现场获取位置，或在地图取点后填写坐标。坐标统一采用 GCJ-02。</p>
     <div className="form-grid three"><label>纬度 GCJ-02<input type="number" required step="any" min={-90} max={90} value={r.latitude} onChange={e=>update('latitude',+e.target.value)}/></label><label>经度 GCJ-02<input type="number" required step="any" min={-180} max={180} value={r.longitude} onChange={e=>update('longitude',+e.target.value)}/></label><label>允许半径 米<input type="number" required min={10} max={2000} value={r.radius} onChange={e=>update('radius',+e.target.value)}/></label></div>
+    <GeofencePreview rules={r} sample={sample} onMoveCenter={point=>setR(v=>({...v,...point,locationConfirmed:false}))}/>
+    <div className="location-guide"><strong>如何确认这个地点</strong><ol><li>打开地图底图，核对蓝色圆心是否落在实际楼栋附近；底图不能辨认具体楼层或教室内部。</li><li>查看蓝圈覆盖到哪些道路、教学楼和宿舍。半径只调整允许范围，不会改善定位信号。</li><li>在教室内及允许区域边缘点击“现场试测”，查看距离、精度和范围结果；试测不会签到或改写中心。</li><li>确认后勾选下方选项并保存。周次教室安排还需“预览并发布日期”，已发布的单日调整按其保存结果生效。</li></ol></div>
     {locationError&&<p className="form-error" role="alert">{locationError}</p>}
     <label className="check-label"><input type="checkbox" checked={r.locationRequired} onChange={e=>update('locationRequired',e.target.checked)}/>要求定位并校验打卡范围</label>
-    {r.locationRequired&&<><label className="check-label"><input type="checkbox" checked={!!r.locationConfirmed} onChange={e=>update('locationConfirmed',e.target.checked)}/>我已核对这个教室的实际定位点</label><div className="form-grid"><label>定位精度上限 米<input type="number" min={5} max={200} value={r.accuracyLimit} onChange={e=>update('accuracyLimit',+e.target.value)}/></label><label>位置有效期 秒<input type="number" min={15} max={120} value={r.locationMaxAge} onChange={e=>update('locationMaxAge',+e.target.value)}/></label></div></>}
+    {r.locationRequired&&<><label className="check-label"><input type="checkbox" disabled={!validFence(r)} checked={!!r.locationConfirmed} onChange={e=>update('locationConfirmed',e.target.checked)}/>我已核对本教室的圆心位置与蓝色允许范围</label><p className="field-hint">修改坐标、地点名称或半径后需要重新核对；地图点选和现场试测本身不会自动勾选确认。</p><div className="form-grid"><label>定位精度上限 米<input type="number" min={5} max={200} value={r.accuracyLimit} onChange={e=>update('accuracyLimit',+e.target.value)}/></label><label>位置有效期 秒<input type="number" min={15} max={120} value={r.locationMaxAge} onChange={e=>update('locationMaxAge',+e.target.value)}/></label></div></>}
+    {r.locationRequired&&<p className="field-hint">位置有效期控制取得的结果可以使用多久，不是定位等待时间。弱信号时本次会继续尝试最多约 45 秒，期间可以取消。</p>}
     <div className="form-section-title"><FileText size={17}/>本场打卡内容</div>
     <div className="base-fields"><span>姓名 <strong>自动识别</strong></span><span>定位 <strong>{r.locationRequired?'必填并校验范围':'未启用'}</strong></span></div>
     <label className="check-label"><input type="checkbox" checked={photo} onChange={e=>update('photoEnabled',e.target.checked)}/>额外收集打卡照片</label>
