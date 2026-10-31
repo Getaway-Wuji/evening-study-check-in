@@ -7,7 +7,7 @@ export default function Login({demo,wechat,bind=false}:{demo:boolean;wechat:bool
   const [mode,setMode]=useState(bind?'bind':'login');
   const [busy,setBusy]=useState(''),[error,setError]=useState('');
   const [bindExisting,setBindExisting]=useState(false),[adminMode,setAdminMode]=useState(false);
-  useEffect(()=>{const notice=new URLSearchParams(location.search).get('notice');if(notice)setError(notice==='wechat-unavailable'?'公众号登录尚未配置，可先使用学号和密码登录。':'微信授权未完成，请重试或使用学号和密码登录。');},[]);
+  useEffect(()=>{const notice=new URLSearchParams(location.search).get('notice');if(notice){const messages:Record<string,string>={'wechat-unavailable':'本公众号暂未接通微信身份登录，请使用学号和密码登录。','wechat-in-app':'请从手机微信中的公众号菜单打开，以使用微信身份登录。','wechat-expired':'微信身份确认已过期，请从公众号菜单重新进入。','wechat-permission':'公众号尚未取得网页授权权限，请使用学号和密码，并联系管理员。'};setError(messages[notice]||'微信授权未完成，请重新从公众号菜单进入或使用学号和密码登录。');}},[]);
   async function submit(e:FormEvent<HTMLFormElement>){
     e.preventDefault();setBusy(mode);setError('');const form=Object.fromEntries(new FormData(e.currentTarget));
     try{const r=await api(`/api/auth/${mode}`,form);location.href=r.next;}catch(e){setError(e instanceof Error?e.message:'操作失败');setBusy('');}

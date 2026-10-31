@@ -3,6 +3,7 @@ import { useState,type ReactNode } from 'react';
 import { Clock3,MapPin,FileText,LocateFixed,ArrowUpRight } from 'lucide-react';
 import { Button } from './common';
 import {useStore} from './store';
+import {acquireLocation} from '@/lib/wechat-browser';
 import {needsLeaveProof} from '@/lib/class-policy';
 import { wgsToGcj,type Rules } from '@/lib/domain';
 export default function RulesEditor({initial,onSave,busy,label,children,inheritTime=false,defaultTime}:{initial:Rules;onSave:(rules:Rules,form:FormData)=>void;busy:boolean;label:string;children?:ReactNode;inheritTime?:boolean;defaultTime?:Pick<Rules,'open'|'close'|'studyStart'>}){
@@ -11,9 +12,10 @@ export default function RulesEditor({initial,onSave,busy,label,children,inheritT
   const display=inheritTime&&defaultTime?{...r,open:defaultTime.open,close:defaultTime.close,studyStart:defaultTime.studyStart}:r;
   const photo=!!(r.photoEnabled??r.photoRequired),note=!!(r.noteEnabled??r.noteRequired);
   const update=(key:keyof Rules,value:unknown)=>setR(v=>({...v,[key]:value,...(['locationName','latitude','longitude'].includes(key)?{locationConfirmed:false}:{}),...(key==='photoEnabled'&&!value?{photoRequired:false}:{}),...(key==='noteEnabled'&&!value?{noteRequired:false}:{})}));
-  function capturePoint(){
-    setLocationError('');if(!navigator.geolocation){setLocationError('当前浏览器不支持定位，请通过地图取点填写坐标');return;}
-    setLocating(true);navigator.geolocation.getCurrentPosition(p=>{const [latitude,longitude]=wgsToGcj(p.coords.latitude,p.coords.longitude);setR(v=>({...v,latitude:+latitude.toFixed(6),longitude:+longitude.toFixed(6),locationConfirmed:false}));setLocating(false);if(p.coords.accuracy>100)setLocationError('当前位置精度较低，保存前请在地图上核对点位。');},()=>{setLocating(false);setLocationError('无法获取位置，请检查权限或通过地图取点填写。');},{enableHighAccuracy:true,maximumAge:0,timeout:15000});
+  async function capturePoint(){
+    setLocationError('');setLocating(true);
+    try{const {position:p}=await acquireLocation(d.wechat.location);const [latitude,longitude]=p.coordinateSystem==='wgs84'?wgsToGcj(p.latitude,p.longitude):[p.latitude,p.longitude];setR(v=>({...v,latitude:+latitude.toFixed(6),longitude:+longitude.toFixed(6),locationConfirmed:false}));if(p.accuracy>r.accuracyLimit)setLocationError('当前位置精度较低，保存前请在地图上核对点位。');}
+    catch(error){setLocationError(error instanceof Error?error.message:'无法获取位置，请检查权限或通过地图取点填写。');}finally{setLocating(false);}
   }
   return <form className="form-stack" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);onSave({...display,open:String(f.get('open')||display.open),close:String(f.get('close')||display.close),studyStart:String(f.get('studyStart')||display.studyStart),photoEnabled:photo,noteEnabled:note,proofRequired:{...r.proofRequired,...Object.fromEntries(types.map(type=>[type.id,needsLeaveProof(r,type)]))}},f);}}>
     {children}<div className="form-section-title"><Clock3 size={17}/>打卡时间{inheritTime&&<span className="optional">沿用默认时间</span>}</div>

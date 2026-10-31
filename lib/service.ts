@@ -8,6 +8,7 @@ import {leaveLabel,leaveDeadline,needsLeaveProof,uploadLimits,validateUploadMeta
 import { databaseConfig } from './database-config';
 import type { InStatement } from '@libsql/client';
 import { readTimetable,timetableCommand,resolveRecurringDate } from './timetable';
+import {wechatSetup} from './wechat-config';
 export { rulesSchema } from './validation';
 
 const day=z.string().refine(validDate,'日期无效');
@@ -49,8 +50,8 @@ export async function bootstrap(user: DBRow) {
     checkins:checkins.map(c=>({...c,photoIds:JSON.parse(c.photo_ids),rule_snapshot:undefined,source_coords:undefined}) as DBRow & {photoIds:string[]}),
     leaves:leaves.map(l=>({...l,kindLabel:leaveLabel(l as {kind:string},config.policy),proofIds:JSON.parse(l.proof_ids),items:items.filter(i=>i.leave_id===l.id)}) as DBRow & {kindLabel:string;proofIds:string[];items:(DBRow & {status:string})[]}),
     students,files,jobs,logs,members,defaults:versions.map(v=>({...v,rules:JSON.parse(v.rules_json),rules_json:undefined}) as DBRow & {rules:Rules}),
-    now:businessNow(),demo:demoMode(),integrations:admin?{
-      wechat:!!(process.env.WECHAT_APP_ID&&process.env.WECHAT_APP_SECRET),
+    now:businessNow(),demo:demoMode(),wechat:{oauth:wechatSetup().oauthConfigured,location:wechatSetup().locationConfigured},integrations:admin?{
+      wechat:wechatSetup().oauthConfigured,wechatLocation:wechatSetup().locationConfigured,
       email:!!(config.policy.notifications.enabled&&process.env.RESEND_API_KEY&&process.env.MAIL_FROM&&config.adminEmails?.length),
       storage:!!process.env.BLOB_READ_WRITE_TOKEN,remoteDatabase:/^(libsql|https):/.test(databaseConfig().url),
       scheduler:!!(process.env.QSTASH_TOKEN&&process.env.CRON_SECRET),

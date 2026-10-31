@@ -114,10 +114,12 @@ npx tsx scripts/verify-local.ts
 1. 核查实际公众号是否具有网页授权（`snsapi_base`）和需要的 JS-SDK 接口权限。类型、认证状态和当前开放能力以该公众号后台为准；暂不具备时可先使用学号和密码登录。
 2. 配置公众号的 `WECHAT_APP_ID`、`WECHAT_APP_SECRET`，两者均仅在服务器使用。`APP_URL` 必须是最终 HTTPS 域名。
 3. 在公众号后台配置网页授权域名和 JS 接口安全域名。将平台提供的校验文件通过 `WECHAT_VERIFY_FILENAME`（例如 `MP_verify_abc123.txt`）与 `WECHAT_VERIFY_CONTENT` 提供在网站根目录，或将原文件放入 `public/`。内容必须与平台给出的原始文件一致。
-4. 公众号菜单“晚自习打卡”指向 `https://你的域名/api/auth/wechat/start`。授权后填写学号和姓名，与后台名单一致才允许关联身份；已注册密码账号的同学可切换“关联已注册账号”，同时用原密码确认关联。
+4. 公众号菜单“晚自习打卡”指向 `https://你的域名/wechat`。网页授权已配置时进入微信身份流程，未接通时保留学号密码入口。授权后填写学号和姓名，与后台名单一致才允许关联身份；已注册密码账号的同学可切换“关联已注册账号”，同时用原密码确认关联。
 5. OAuth 使用随机 state 和 HttpOnly Cookie 校验回调，OpenID、授权密钥和接口票据不下发到网页。本站会话为随机令牌，数据库中仅存令牌摘要。
-6. 在微信中优先尝试 JS-SDK 定位，无法获得可靠精度时回退至浏览器定位。后台统一坐标系后计算距离；需要允许定位权限，iOS、Android 微信均须真机验证。
+6. 通过 `WECHAT_OAUTH_ENABLED` 与 `WECHAT_LOCATION_ENABLED` 分别启用已确认的能力。微信中优先尝试已配置的 JS-SDK 定位，技术故障或精度缺失时回退至系统定位并标注来源；用户主动取消或拒绝权限时不自动再次请求。后台统一坐标系后计算距离，iOS、Android 微信均须真机验证。
 7. JS-SDK 票据使用数据库缓存和 `stable_token`。如果公众号要求调用来源 IP 白名单，而 Vercel 出网地址不稳定，需要选择能提供固定出口的接入方式，或调整托管架构；本项目未假定动态出口能直接通过白名单。
+
+详细配置与验收见 [公众号接入指南](WECHAT-SETUP.md)。后台“系统设置 → 公众号接入”可查看配置及检测服务器票据连接；检测通过不代表微信客户端已验收。
 
 参考官方资料：[公众号接入及网页授权](https://docs.cloudbase.net/integration/wechat-official-oauth)、[公众号域名设置](https://cloud.tencent.com/document/practice/1301/100434)。
 
