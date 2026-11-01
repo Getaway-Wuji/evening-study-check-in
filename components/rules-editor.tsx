@@ -6,6 +6,7 @@ import {useStore} from './store';
 import {useLocationRequest} from './use-location-request';
 import GeofencePreview from './geofence-preview';
 import LocationHelp from './location-help';
+import LocationTimeNotice from './location-time-notice';
 import {validFence} from '@/lib/geofence';
 import type {StudyLocation,LocationStrategy} from '@/lib/location';
 import {needsLeaveProof} from '@/lib/class-policy';
@@ -35,6 +36,7 @@ export default function RulesEditor({initial,onSave,busy,label,children,inheritT
     <p className="field-hint">可在教室现场获取位置，或在地图取点后填写坐标。坐标统一采用 GCJ-02。</p>
     <div className="form-grid three"><label>纬度 GCJ-02<input type="number" required step="any" min={-90} max={90} value={r.latitude} onChange={e=>update('latitude',+e.target.value)}/></label><label>经度 GCJ-02<input type="number" required step="any" min={-180} max={180} value={r.longitude} onChange={e=>update('longitude',+e.target.value)}/></label><label>允许半径 米<input type="number" required min={10} max={2000} value={r.radius} onChange={e=>update('radius',+e.target.value)}/></label></div>
     <GeofencePreview rules={r} sample={sample} onMoveCenter={point=>setR(v=>({...v,...point,locationConfirmed:false}))}/>
+    <LocationTimeNotice timeBasis={sample?.timeBasis}/>
     <div className="location-guide"><strong>如何确认这个地点</strong><ol><li>打开地图底图，核对蓝色圆心是否落在实际楼栋附近；底图不能辨认具体楼层或教室内部。</li><li>查看蓝圈覆盖到哪些道路、教学楼和宿舍。半径只调整允许范围，不会改善定位信号。</li><li>在教室内及允许区域边缘点击“现场试测”，查看距离、精度和范围结果；试测不会签到或改写中心。</li><li>确认后勾选下方选项并保存。周次教室安排还需“预览并发布日期”，已发布的单日调整按其保存结果生效。</li></ol></div>
     {locationError&&<p className="form-error" role="alert">{locationError}</p>}<LocationHelp error={locationError} busy={locating} report={report} onRetry={()=>void(lastPurpose.current==='capture'?capturePoint('compatible'):testPoint('compatible'))} retryLabel={lastPurpose.current==='capture'?'兼容模式重新获取打卡点':'兼容模式现场试测'}/>
     <label className="check-label"><input type="checkbox" checked={r.locationRequired} onChange={e=>update('locationRequired',e.target.checked)}/>要求定位并校验打卡范围</label>

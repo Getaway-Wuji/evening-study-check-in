@@ -51,9 +51,10 @@ export function wgsToGcj(lat: number, lng: number): [number, number] {
   b = b*180/(6378245/Math.sqrt(magic)*Math.cos(rad)*pi);
   return [lat+a,lng+b];
 }
-export function checkLocation(rules: Rules, loc: { latitude: number; longitude: number; accuracy: number; capturedAt: number; coordinateSystem: 'wgs84' | 'gcj02' }, now = Date.now()) {
+export function checkLocation(rules: Rules, loc: { latitude: number; longitude: number; accuracy: number; capturedAt: number; coordinateSystem: 'wgs84' | 'gcj02';timeBasis?:'fresh-request';deviceTimestamp?:number }, now = Date.now()) {
   if(![rules.latitude,rules.longitude,rules.radius,rules.accuracyLimit,rules.locationMaxAge,loc.latitude,loc.longitude,loc.accuracy,loc.capturedAt,now].every(Number.isFinite)||Math.abs(loc.latitude)>90||Math.abs(loc.longitude)>180||!['wgs84','gcj02'].includes(loc.coordinateSystem))throw new Error('定位数据无效，请重新获取');
   if (now - loc.capturedAt > rules.locationMaxAge * 1000 || loc.capturedAt > now + 10000) throw new Error('位置已过期，请重新获取定位');
+  if(loc.timeBasis==='fresh-request'&&(loc.deviceTimestamp!==10000||loc.coordinateSystem!=='wgs84'))throw new Error('定位时间来源标记无效，请重新获取');
   if (loc.accuracy <= 0 || loc.accuracy > rules.accuracyLimit) throw new Error(`定位精度不足，请重试（要求 ${rules.accuracyLimit} 米以内）`);
   const [lat,lng] = loc.coordinateSystem === 'wgs84' ? wgsToGcj(loc.latitude,loc.longitude) : [loc.latitude,loc.longitude];
   const distance = distanceMeters(lat,lng,rules.latitude,rules.longitude);

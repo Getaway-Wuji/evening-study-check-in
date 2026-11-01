@@ -1,5 +1,6 @@
 import {LocationFailure,type LocationOptions,type StudyLocation,type LocationDiagnostic,type LocationSampleIssue} from './location';
-import {browserPosition,invalidPositionMessage} from './browser-position';
+import {invalidPositionMessage} from './browser-position';
+import {harmonyPosition} from './harmony-position';
 
 // Huawei/ArkWeb compatibility: one-shot requests, without a concurrent high-accuracy watch.
 export function compatibleLocation(options:LocationOptions,geo:Geolocation):Promise<StudyLocation>{
@@ -15,14 +16,14 @@ export function compatibleLocation(options:LocationOptions,geo:Geolocation):Prom
     const exhausted=()=>{if(best&&fresh(best))finish(undefined,best);else finish(new LocationFailure(lastInvalid?invalidPositionMessage(lastInvalid):'系统仍未返回可靠位置。请检查手机定位及当前应用的精确位置权限，先在系统地图确认能定位后返回重试；可展开下方排查与诊断。','technical'));};
     function next(){
       if(settled)return;if(index>=plan.length||Date.now()>=deadlineAt){exhausted();return;}
-      const attempt=index++,phase=plan[attempt],token=++generation,method=phase.high?'single-high':'single-balanced',budget=Math.max(1,Math.min(deadlineAt-Date.now(),Math.round(total*phase.share)));
+      const attempt=index++,phase=plan[attempt],token=++generation,method=phase.high?'single-high':'single-balanced',requestedAt=Date.now(),budget=Math.max(1,Math.min(deadlineAt-requestedAt,Math.round(total*phase.share)));
       options.onProgress?.({stage:'compatible',attempt:attempt+1,accuracy:best?.accuracy});diagnostic(method,'started');
       // Yield out of the native callback before issuing another request to the host bridge.
       const advance=()=>{if(settled||token!==generation)return;clearTimeout(attemptTimer);generation++;betweenTimer=setTimeout(next,Math.min(250,Math.floor(total*0.005)));};
       attemptTimer=setTimeout(()=>{if(settled||token!==generation)return;diagnostic(method,'timeout',{code:3});advance();},budget);
       try{geo.getCurrentPosition(value=>{
         if(settled||token!==generation)return;
-        const parsed=browserPosition(value,maxAge),point=parsed.position;
+        const parsed=harmonyPosition(value,maxAge,{enabled:options.harmonyClockWorkaround===true,maximumAge:phase.age,startedAt:requestedAt}),point=parsed.position;
         if(point){
           diagnostic(method,'sample',{accuracy:point.accuracy,sample:parsed.sample});
           if(!best||!fresh(best)||point.accuracy<best.accuracy||point.accuracy===best.accuracy&&point.capturedAt>best.capturedAt)best=point;

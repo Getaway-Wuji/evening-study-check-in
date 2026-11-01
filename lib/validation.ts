@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { validDate,timeMinutes } from './domain';
+export const locationTimeShape={timeBasis:z.literal('fresh-request').optional(),deviceTimestamp:z.number().optional()};
 export const classPolicySchema=z.object({
   leaveTypes:z.array(z.object({id:z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/).refine(id=>!['constructor','prototype','__proto__'].includes(id)),name:z.string().trim().min(1).max(30),enabled:z.boolean(),reasonRequired:z.boolean(),proofRequired:z.boolean()})).min(1).max(30)
     .refine(types=>new Set(types.map(t=>t.id)).size===types.length,'请假类型编号重复')

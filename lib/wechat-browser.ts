@@ -82,7 +82,7 @@ export async function acquireLocation(wechatConfigured:boolean,options:LocationO
   if(!window.isSecureContext)throw new Error('定位需要安全连接，请使用网站的 HTTPS 正式地址');
   if(options.signal?.aborted)throw new LocationFailure('已取消定位，可重新尝试','cancelled');
   const explicitCompatible=options.strategy==='compatible';
-  options={...options,strategy:options.strategy??preferredLocationStrategy(navigator.userAgent)};
+  options={...options,strategy:options.strategy??preferredLocationStrategy(navigator.userAgent),harmonyClockWorkaround:/HarmonyOS|OpenHarmony|ArkWeb/i.test(navigator.userAgent)};
   const deadline=Date.now()+(options.timeoutMs??45000),remaining=()=>({...options,timeoutMs:Math.max(1,deadline-Date.now())});
   if(wechatConfigured&&!explicitCompatible&&/MicroMessenger/i.test(navigator.userAgent)){
     try{const position=await wechatLocation(remaining());if(position.accuracy<=(options.targetAccuracy??50))return {position,source:'wechat',fallback:false};}

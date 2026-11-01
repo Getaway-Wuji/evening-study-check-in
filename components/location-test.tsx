@@ -4,6 +4,7 @@ import {LocateFixed,MapPin,FlaskConical,ShieldCheck} from 'lucide-react';
 import {useStore} from './store';
 import {useLocationRequest} from './use-location-request';
 import LocationHelp from './location-help';
+import LocationTimeNotice from './location-time-notice';
 import type {LocationStrategy} from '@/lib/location';
 import {Button,Badge,api} from './common';
 import type {LocationTestContext,LocationTestResult} from '@/lib/location-test';
@@ -44,7 +45,7 @@ export default function StudentLocationTest(){
     <div className={styles.controls}><Button type="button" variant="primary" busy={checking||busy} disabled={!available||!target} onClick={()=>void test()}><LocateFixed size={18}/>{result?'重新测试定位':'开始测试定位'}</Button>{busy&&<Button type="button" onClick={cancel}>取消定位</Button>}</div>
     {progress&&<p className={styles.progress} role="status">{progress}</p>}{(error||locationError)&&<p className="form-error" role="alert">{error||locationError}</p>}
     <LocationHelp error={locationError||error||(!result?.eligible?result?.message:'')||''} busy={checking||busy} report={report} disabled={!available||!target} onRetry={()=>void test('compatible')}/>
-    {result&&<div className={`${styles.result} ${result.eligible?styles.good:styles.bad}`} role="status"><strong><MapPin size={19}/>{result.eligible?'本次定位测试达标 · 未签到':'本次定位测试未达标'}</strong><p>{result.message}</p><div className={styles.metrics}><span>距离教室圆心<b>{result.distance} 米</b></span><span>设备报告精度<b>{Math.round(result.accuracy)} 米</b></span><span>允许范围<b>{result.target.rules.radius} 米</b></span></div><small>{result.target.rules.locationName} · 测试于 {new Date(result.testedAt).toLocaleTimeString('zh-CN',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small></div>}
+    {result&&<div className={`${styles.result} ${result.eligible?styles.good:styles.bad}`} role="status"><strong><MapPin size={19}/>{result.eligible?'本次定位测试达标 · 未签到':'本次定位测试未达标'}</strong><p>{result.message}</p><LocationTimeNotice timeBasis={result.timeBasis}/><div className={styles.metrics}><span>距离教室圆心<b>{result.distance} 米</b></span><span>设备报告精度<b>{Math.round(result.accuracy)} 米</b></span><span>允许范围<b>{result.target.rules.radius} 米</b></span></div><small>{result.target.rules.locationName} · 测试于 {new Date(result.testedAt).toLocaleTimeString('zh-CN',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small></div>}
     <p className={styles.note}><ShieldCheck size={16}/>测试结果仅供本次检查，不保存定位坐标，不计入考勤。正式打卡时仍需重新定位，并满足当场的时间及其他要求。</p>
   </section>;
 }

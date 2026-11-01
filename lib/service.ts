@@ -3,7 +3,7 @@ import { HTTPError } from './auth';
 import { ready, rows, one, run, transaction, audit, settings, rulesFor, businessNow, demoMode, db, type DBRow, type Connection } from './db';
 import { dateCN, validDate, addDays, period, timeMinutes, checkLocation, type Rules } from './domain';
 import { normalizeStudentCode } from './identity';
-import { rulesSchema,classCapacitySchema,classPolicySchema } from './validation';
+import { rulesSchema,classCapacitySchema,classPolicySchema,locationTimeShape } from './validation';
 import {leaveLabel,leaveDeadline,needsLeaveProof} from './class-policy';
 import { databaseConfig } from './database-config';
 import type { InStatement } from '@libsql/client';
@@ -65,7 +65,7 @@ export async function command(user: DBRow, raw: unknown): Promise<Record<string,
     if(action.startsWith('term.')||action.startsWith('recurrence.'))return timetableCommand(user,action,data,tx);
     if (action==='checkin') {
       const policy=(await settings(tx)).policy;
-      const input=z.object({sessionId:z.string(),latitude:z.number().min(-90).max(90).optional(),longitude:z.number().min(-180).max(180).optional(),accuracy:z.number().optional(),capturedAt:z.number().optional(),coordinateSystem:z.enum(['wgs84','gcj02']).optional(),photoIds:z.array(z.string()).max(policy.uploads.photoMaxFiles).default([]),note:z.string().trim().max(policy.noteMaxLength).default('')}).parse(data);
+      const input=z.object({sessionId:z.string(),latitude:z.number().min(-90).max(90).optional(),longitude:z.number().min(-180).max(180).optional(),accuracy:z.number().optional(),capturedAt:z.number().optional(),coordinateSystem:z.enum(['wgs84','gcj02']).optional(),...locationTimeShape,photoIds:z.array(z.string()).max(policy.uploads.photoMaxFiles).default([]),note:z.string().trim().max(policy.noteMaxLength).default('')}).parse(data);
       const s=await member(input.sessionId,user.id,tx);
       const previous=await one('SELECT id FROM checkins WHERE session_id=? AND user_id=?',[s.id,user.id],tx);
       if (previous) return {message:'你已成功打卡，无需重复提交',id:previous.id};
@@ -75,7 +75,7 @@ export async function command(user: DBRow, raw: unknown): Promise<Record<string,
       let location:{latitude:number;longitude:number;distance:number}|undefined;
       if(rules.locationRequired){
         if (!demoMode() && !rules.locationConfirmed && !(await settings(tx)).locationConfigured) throw new Error('管理员尚未确认实际打卡地点，请联系管理员');
-        const loc=z.object({latitude:z.number().min(-90).max(90),longitude:z.number().min(-180).max(180),accuracy:z.number().positive(),capturedAt:z.number(),coordinateSystem:z.enum(['wgs84','gcj02'])}).parse(input);
+        const loc=z.object({latitude:z.number().min(-90).max(90),longitude:z.number().min(-180).max(180),accuracy:z.number().positive(),capturedAt:z.number(),coordinateSystem:z.enum(['wgs84','gcj02']),...locationTimeShape}).parse(input);
         location=checkLocation(rules,loc);
       }
       if(rules.photoRequired&&!input.photoIds.length) throw new Error('请按要求上传打卡照片');
@@ -86,11 +86,11 @@ export async function command(user: DBRow, raw: unknown): Promise<Record<string,
       const id=crypto.randomUUID();
       await run('INSERT INTO checkins(id,session_id,user_id,submitted_at,latitude,longitude,accuracy,distance,captured_at,source_coords,photo_ids,note,rule_snapshot,rule_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[
         id,s.id,user.id,businessNow(),location?.latitude??null,location?.longitude??null,input.accuracy??null,location?.distance??null,input.capturedAt??null,
-        JSON.stringify({latitude:input.latitude,longitude:input.longitude,system:input.coordinateSystem}),JSON.stringify(input.photoIds),input.note,s.rules_json,s.version,
+        JSON.stringify({latitude:input.latitude,longitude:input.longitude,system:input.coordinateSystem,timeBasis:input.timeBasis,deviceTimestamp:input.deviceTimestamp}),JSON.stringify(input.photoIds),input.note,s.rules_json,s.version,
       ],tx);
       await run("UPDATE leave_items SET status='invalid',review_note='本人已完成打卡，此场次申请自动失效',reviewed_at=? WHERE session_id=? AND user_id=? AND status='pending'",[Date.now(),s.id,user.id],tx);
       await invalidateMakeups(s.id,user.id,'本人已完成正常打卡，无需补签',tx);
-      await audit(user.id,'打卡成功',{session:s.date,distance:location?.distance},tx);
+      await audit(user.id,'打卡成功',{session:s.date,distance:location?.distance,...(input.timeBasis?{locationTimeBasis:input.timeBasis,deviceTimestamp:input.deviceTimestamp}:{})},tx);
       return {message:'打卡成功，今晚也要保持专注',id};
     }
     if(action==='leave.create'){

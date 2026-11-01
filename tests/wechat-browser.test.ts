@@ -50,4 +50,13 @@ test('华为系统定位自动采用兼容策略；显式兼容重试不再次�
     nav.userAgent='Android MicroMessenger';const beforeWx=wxCalls;await acquireLocation(true,{strategy:'compatible'});assert.equal(wxCalls,beforeWx);assert.equal(options[1].enableHighAccuracy,false);
   }finally{nav.userAgent=beforeUA;nav.geolocation=beforeGeo;}
 });
+test('鸿蒙固定异常时间可进入无缓存兼容，普通安卓显式重试也不会套用该异常时间处理',async()=>{
+  const nav=navigator as unknown as {userAgent:string;geolocation:Geolocation},beforeUA=nav.userAgent,beforeGeo=nav.geolocation;
+  nav.geolocation={getCurrentPosition:(success)=>success({timestamp:10000,coords:{latitude:31.1,longitude:121.2,accuracy:13.5}} as GeolocationPosition),watchPosition:()=>{throw Error('Unexpected watcher');},clearWatch:()=>{}} as Geolocation;
+  try{
+    nav.userAgent='Phone; OpenHarmony 7.0; ArkWeb/6.0 MicroMessenger';const value=await acquireLocation(false,{timeoutMs:150});assert.equal(value.position.timeBasis,'fresh-request');assert.equal(value.position.deviceTimestamp,10000);
+    nav.userAgent='Android Chrome MicroMessenger';await assert.rejects(acquireLocation(false,{strategy:'compatible',timeoutMs:150}),/采集时间已超出有效期/);
+  }finally{nav.userAgent=beforeUA;nav.geolocation=beforeGeo;}
+});
+
 test.after(()=>{for(const [name,descriptor] of originals){if(descriptor)Object.defineProperty(globalThis,name,descriptor);else Reflect.deleteProperty(globalThis,name);}});

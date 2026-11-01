@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdirSync} from 'node:fs';
 import {dateCN,addDays,defaultRules} from '../lib/domain';
+import {gcjToWgs} from '../lib/geofence';
 mkdirSync('.local',{recursive:true});process.env.DATABASE_URL=`file:./.local/location-test-${crypto.randomUUID()}.db`;process.env.DEMO_MODE='false';
 const {ready,db,run,one,settings}=await import('../lib/db');
 const {command,bootstrap,createSession}=await import('../lib/service');
@@ -38,6 +39,10 @@ test('测试沿用正式定位的范围、精度与位置有效期，失败仍�
   const outside=await testStudentLocation(student,{...sample(),latitude:39.91},before);assert.equal(outside.eligible,false);assert.equal(outside.inside,false);assert.match(outside.message,/超出/);
   const coarse=await testStudentLocation(student,{...sample(),accuracy:150},before);assert.equal(coarse.inside,true);assert.equal(coarse.eligible,false);assert.match(coarse.message,/精度不足/);
   const expired=await testStudentLocation(student,{...sample(),capturedAt:before-61000},before);assert.equal(expired.eligible,false);assert.match(expired.message,/过期/);
+  const [latitude,longitude]=gcjToWgs(rules.latitude,rules.longitude),fresh={...sample(),latitude,longitude,coordinateSystem:'wgs84',timeBasis:'fresh-request',deviceTimestamp:10000};
+  const compatible=await testStudentLocation(student,fresh,before);assert.equal(compatible.eligible,true);assert.equal(compatible.timeBasis,'fresh-request');assert.equal(compatible.recorded,false);
+  assert.equal((await testStudentLocation(student,{...fresh,capturedAt:before-61000},before)).eligible,false);
+  assert.equal((await testStudentLocation(student,{...fresh,deviceTimestamp:10001},before)).eligible,false);
   await assert.rejects(testStudentLocation(student,{...sample(),latitude:NaN},before));
 });
 test('正式打卡时段及截止分钟不开放测试，伪造请求时间也不能绕过',async()=>{
