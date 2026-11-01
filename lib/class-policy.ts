@@ -6,6 +6,7 @@ export interface ClassPolicy {
   uploads:{photoMaxFiles:number;proofMaxFiles:number;photoMaxMB:number;proofMaxMB:number;proofPdfEnabled:boolean};
   notifications:{enabled:boolean;maxAttempts:number;retryMinutes:number[]};
   makeup:{enabled:boolean;hoursAfterClose:number};
+  locationTest:{enabled:boolean};
   noteMaxLength:number;studentNotice:string;
 }
 export const defaultClassPolicy:ClassPolicy={
@@ -14,10 +15,11 @@ export const defaultClassPolicy:ClassPolicy={
   uploads:{photoMaxFiles:5,proofMaxFiles:5,photoMaxMB:10,proofMaxMB:10,proofPdfEnabled:true},
   notifications:{enabled:true,maxAttempts:5,retryMinutes:[1,5,15,60,180]},noteMaxLength:500,studentNotice:'',
   makeup:{enabled:true,hoursAfterClose:24},
+  locationTest:{enabled:false},
 };
 export function resolveClassPolicy(value?:Partial<ClassPolicy>|null):ClassPolicy{
   const defaults=structuredClone(defaultClassPolicy);
-  return {...defaults,...value,leave:{...defaults.leave,...value?.leave},uploads:{...defaults.uploads,...value?.uploads},makeup:{...defaults.makeup,...value?.makeup},notifications:{...defaults.notifications,...value?.notifications,retryMinutes:[...(value?.notifications?.retryMinutes??defaults.notifications.retryMinutes)]},leaveTypes:structuredClone(value?.leaveTypes??defaults.leaveTypes)};
+  return {...defaults,...value,leave:{...defaults.leave,...value?.leave},uploads:{...defaults.uploads,...value?.uploads},makeup:{...defaults.makeup,...value?.makeup},locationTest:{...defaults.locationTest,...value?.locationTest},notifications:{...defaults.notifications,...value?.notifications,retryMinutes:[...(value?.notifications?.retryMinutes??defaults.notifications.retryMinutes)]},leaveTypes:structuredClone(value?.leaveTypes??defaults.leaveTypes)};
 }
 export function leaveLabel(leave:{kind:string;kindLabel?:string|null;kind_label?:string|null},policy:ClassPolicy){
   return leave.kindLabel||leave.kind_label||(Object.hasOwn(leaveKinds,leave.kind)?leaveKinds[leave.kind]:undefined)||policy.leaveTypes.find(t=>t.id===leave.kind)?.name||leave.kind;

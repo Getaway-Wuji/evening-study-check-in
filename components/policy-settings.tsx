@@ -27,6 +27,7 @@ export default function PolicySettings(){
         </tr>)}</tbody></table></div>
       </div>
       <div className="policy-grid">
+        <div className="policy-section"><h3>临时开放学生定位测试</h3><label className="check-label"><input type="checkbox" checked={draft.locationTest.enabled} onChange={e=>setDraft(p=>({...p,locationTest:{enabled:e.target.checked}}))}/>允许学生在非打卡时段测试定位</label><p className="field-hint">保存后，学生在“今日打卡”页可选择已发布并核对的教室，查看定位精度、距离和范围校验结果。测试不会签到、补签或影响考勤；正式打卡时段使用正常打卡。测试结束后可随时关闭，已打开的学生页面会在下次刷新时隐藏入口。</p></div>
         <div className="policy-section"><h3>定位失败后的人工补签</h3><label className="check-label"><input type="checkbox" checked={draft.makeup.enabled} onChange={e=>setDraft(p=>({...p,makeup:{...p.makeup,enabled:e.target.checked}}))}/>允许学生上传现场照片和说明申请补签</label><label>正常打卡截止后允许申请的小时数<input type="number" required min={1} max={720} value={draft.makeup.hoursAfterClose} onChange={e=>setDraft(p=>({...p,makeup:{...p.makeup,hoursAfterClose:+e.target.value}}))}/></label><p className="field-hint">申请从本场打卡开放时开始接受，现场照片必填，数量与大小沿用打卡照片限制。审核通过才计入出勤；关闭入口或超过申请期限不影响已提交申请的审核。</p></div>
         <div className="policy-section"><h3>请假提交规则</h3><div className="form-grid">
           <label>单次最多请假场数<input type="number" required min={1} max={366} value={draft.leave.maxSessions} onChange={e=>leaveNumber('maxSessions',+e.target.value)}/></label>

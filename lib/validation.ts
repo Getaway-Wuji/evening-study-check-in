@@ -10,6 +10,7 @@ export const classPolicySchema=z.object({
   uploads:z.object({photoMaxFiles:z.number().int().min(1).max(20),proofMaxFiles:z.number().int().min(1).max(20),photoMaxMB:z.number().int().min(1).max(10),proofMaxMB:z.number().int().min(1).max(10),proofPdfEnabled:z.boolean()}),
   notifications:z.object({enabled:z.boolean(),maxAttempts:z.number().int().min(1).max(10),retryMinutes:z.array(z.number().int().min(1).max(1440)).min(1).max(10)}),
   makeup:z.object({enabled:z.boolean(),hoursAfterClose:z.number().int().min(1).max(720)}).default({enabled:true,hoursAfterClose:24}),
+  locationTest:z.object({enabled:z.boolean()}).default({enabled:false}),
   noteMaxLength:z.number().int().min(1).max(2000),studentNotice:z.string().trim().max(2000),
 });
 export const daySchema=z.string().refine(validDate,'日期无效');
