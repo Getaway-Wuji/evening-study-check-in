@@ -42,4 +42,12 @@ test('微信准备阶段也能取消，迟到的 ready 不会继续调取位置�
   mode='pending';href='https://study.example.test/student?test=abort';const beforeNative=nativeCalls,beforeWx=wxCalls,controller=new AbortController();
   const request=acquireLocation(true,{signal:controller.signal});await new Promise(r=>setTimeout(r,0));controller.abort();await assert.rejects(request,/已取消/);onReady();await Promise.resolve();assert.equal(nativeCalls,beforeNative);assert.equal(wxCalls,beforeWx);mode='ok';
 });
+test('华为系统定位自动采用兼容策略；显式兼容重试不再次等待微信 SDK',async()=>{
+  const nav=navigator as unknown as {userAgent:string;geolocation:Geolocation},beforeUA=nav.userAgent,beforeGeo=nav.geolocation;
+  const options:PositionOptions[]=[];nav.geolocation={getCurrentPosition:(success,_,opts)=>{options.push(opts!);success({timestamp:Date.now(),coords:{latitude:31.1,longitude:121.2,accuracy:20}} as GeolocationPosition);},watchPosition:()=>{throw Error('Unexpected watcher');},clearWatch:()=>{throw Error('Unexpected watcher cleanup');}} as Geolocation;
+  try{
+    nav.userAgent='HarmonyOS 6 HuaweiBrowser MicroMessenger';const signatures=signatureCalls;await acquireLocation(false);assert.equal(signatureCalls,signatures);assert.equal(options[0].enableHighAccuracy,false);assert.ok(options[0].maximumAge!>0);
+    nav.userAgent='Android MicroMessenger';const beforeWx=wxCalls;await acquireLocation(true,{strategy:'compatible'});assert.equal(wxCalls,beforeWx);assert.equal(options[1].enableHighAccuracy,false);
+  }finally{nav.userAgent=beforeUA;nav.geolocation=beforeGeo;}
+});
 test.after(()=>{for(const [name,descriptor] of originals){if(descriptor)Object.defineProperty(globalThis,name,descriptor);else Reflect.deleteProperty(globalThis,name);}});

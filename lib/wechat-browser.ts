@@ -1,5 +1,6 @@
 import {readLocation,wechatSignatureURL,LocationFailure,type StudyLocation,type LocationOptions} from './location';
 import {browserLocation} from './browser-location';
+import {preferredLocationStrategy} from './location-device';
 type Signature={appId:string;timestamp:number;nonceStr:string;signature:string};
 type SDK={config:(config:Signature&{debug:boolean;jsApiList:string[]})=>void;ready:(callback:()=>void)=>void;error:(callback:(error:{errMsg?:string})=>void)=>void;checkJsApi?:(input:{jsApiList:string[];success:(result:{checkResult:Record<string,boolean>|string})=>void;fail:()=>void})=>void;getLocation:(input:{type:'gcj02';success:(result:{latitude:unknown;longitude:unknown;accuracy:unknown})=>void;fail:(error:{errMsg?:string})=>void;cancel:()=>void})=>void};
 declare global {interface Window {wx?:SDK;__studyEntryURL?:string}}
@@ -80,8 +81,10 @@ async function wechatLocation(options:LocationOptions):Promise<StudyLocation>{
 export async function acquireLocation(wechatConfigured:boolean,options:LocationOptions={}):Promise<{position:StudyLocation;source:'wechat'|'system';fallback:boolean}>{
   if(!window.isSecureContext)throw new Error('定位需要安全连接，请使用网站的 HTTPS 正式地址');
   if(options.signal?.aborted)throw new LocationFailure('已取消定位，可重新尝试','cancelled');
+  const explicitCompatible=options.strategy==='compatible';
+  options={...options,strategy:options.strategy??preferredLocationStrategy(navigator.userAgent)};
   const deadline=Date.now()+(options.timeoutMs??45000),remaining=()=>({...options,timeoutMs:Math.max(1,deadline-Date.now())});
-  if(wechatConfigured&&/MicroMessenger/i.test(navigator.userAgent)){
+  if(wechatConfigured&&!explicitCompatible&&/MicroMessenger/i.test(navigator.userAgent)){
     try{const position=await wechatLocation(remaining());if(position.accuracy<=(options.targetAccuracy??50))return {position,source:'wechat',fallback:false};}
     catch(error){if(error instanceof LocationFailure&&error.kind!=='technical')throw error;configured=undefined;}
     if(options.signal?.aborted)throw new LocationFailure('已取消定位，可重新尝试','cancelled');

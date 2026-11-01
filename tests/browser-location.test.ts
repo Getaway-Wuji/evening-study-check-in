@@ -32,3 +32,7 @@ test('取消后停止监听，迟到的位置回调不会被采用',async()=>{
  let later:PositionCallback=()=>{};const {geo,calls}=geolocation(success=>{later=success;});const controller=new AbortController(),promise=browserLocation({signal:controller.signal,timeoutMs:100},geo);await Promise.resolve();controller.abort();await assert.rejects(promise,/已取消/);later(position(1));assert.equal(calls.clears,1);assert.equal(calls.network,0);
  const before=geolocation(()=>{});await assert.rejects(browserLocation({signal:controller.signal},before.geo),/已取消/);assert.equal(before.calls.watches,0);
 });
+test('先前较准的样本过期后可被较新的粗略样本替换，不因旧最佳值而误报无位置',async()=>{
+ const original=Date.now;let now=original();Date.now=()=>now;
+ try{const {geo}=geolocation(success=>{success(position(80,now));now+=16000;success(position(150,now));});const result=await browserLocation({targetAccuracy:50,timeoutMs:30,maxAgeSeconds:15},geo);assert.equal(result.accuracy,150);assert.equal(result.capturedAt,now);}finally{Date.now=original;}
+});
