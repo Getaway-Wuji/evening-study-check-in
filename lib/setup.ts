@@ -2,13 +2,14 @@ import { z } from 'zod';
 import { ready,one,run,transaction,audit,settings } from './db';
 import { passwordHash,HTTPError } from './auth';
 import { classCapacitySchema,studyTimesSchema } from './validation';
+import {MIN_PASSWORD_LENGTH} from './password-policy';
 export async function needsSetup(){await ready();return !await one("SELECT id FROM users WHERE role='admin' LIMIT 1");}
 export function localSetupAllowed(){
   if(process.env.VERCEL||process.env.NODE_ENV==='production')return false;
   try{return ['127.0.0.1','localhost','[::1]'].includes(new URL(process.env.APP_URL||'http://127.0.0.1:3000').hostname);}catch{return false;}
 }
 export async function initializeClass(raw:unknown){
-  const input=z.object({className:z.string().trim().min(1).max(40),capacity:classCapacitySchema.default(null),studyTimes:studyTimesSchema.optional(),username:z.string().trim().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/),password:z.string().min(14).max(128)}).parse(raw);
+  const input=z.object({className:z.string().trim().min(1).max(40),capacity:classCapacitySchema.default(null),studyTimes:studyTimesSchema.optional(),username:z.string().trim().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/),password:z.string().min(MIN_PASSWORD_LENGTH).max(128)}).parse(raw);
   await ready();const pw=await passwordHash(input.password);
   return transaction(async tx=>{
     if(await one("SELECT id FROM users WHERE role='admin' LIMIT 1",[],tx))throw new HTTPError(409,'系统已完成初始化，请直接登录');

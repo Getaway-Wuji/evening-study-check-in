@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { ready,one,run,transaction,demoMode,audit } from '@/lib/db';
 import { hash,passwordHash,passwordMatches,signIn,sameOrigin,errorResponse,rateLimit,token,requireUser } from '@/lib/auth';
 import { normalizeStudentCode,normalizeStudentName } from '@/lib/identity';
+import {MIN_PASSWORD_LENGTH} from '@/lib/password-policy';
 export const runtime='nodejs';
 export async function POST(req:NextRequest,{params}:{params:Promise<{action:string}>}){
   try{
@@ -31,7 +32,7 @@ export async function POST(req:NextRequest,{params}:{params:Promise<{action:stri
     }
     if(action==='password'){
       const user=await requireUser();
-      const input=z.object({currentPassword:z.string().max(128).optional(),password:z.string().min(10).max(128)}).parse(await req.json());
+      const input=z.object({currentPassword:z.string().max(128).optional(),password:z.string().min(MIN_PASSWORD_LENGTH).max(128)}).parse(await req.json());
       const u=await one('SELECT password_hash FROM users WHERE id=?',[user.id]);
       if(u.password_hash&&!await passwordMatches(input.currentPassword||'',u.password_hash))throw new Error('当前密码不正确');
       const value=await passwordHash(input.password),current=(await cookies()).get('study_session')?.value;
@@ -39,7 +40,7 @@ export async function POST(req:NextRequest,{params}:{params:Promise<{action:stri
       return NextResponse.json({message:'登录密码已更新，其他设备的旧登录已失效'});
     }
     if(action==='register'||action==='bind'){
-      const input=z.object({code:z.string().transform(normalizeStudentCode).pipe(z.string().min(1).max(32)),name:z.string().trim().min(1).max(30),password:action==='register'?z.string().min(10).max(128):z.string().max(128).optional()}).parse(await req.json());
+      const input=z.object({code:z.string().transform(normalizeStudentCode).pipe(z.string().min(1).max(32)),name:z.string().trim().min(1).max(30),password:action==='register'?z.string().min(MIN_PASSWORD_LENGTH).max(128):z.string().max(128).optional()}).parse(await req.json());
       await rateLimit(req,'activate:'+input.code,12);
       const pendingToken=(await cookies()).get('wechat_pending')?.value;
       const pending=action==='bind'&&pendingToken?await one('SELECT * FROM wechat_pending WHERE token_hash=? AND expires_at>?',[hash(pendingToken),Date.now()]):null;

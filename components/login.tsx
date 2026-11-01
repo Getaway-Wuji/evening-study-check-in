@@ -3,6 +3,7 @@ import { useState,useEffect,type FormEvent } from 'react';
 import { BookOpen,ArrowRight,ShieldCheck,Users,Clock3,MessageCircle,GraduationCap } from 'lucide-react';
 import { Button,api } from './common';
 import StudyScene from './study-scene';
+import {MIN_PASSWORD_LENGTH} from '@/lib/password-policy';
 export default function Login({demo,wechat,bind=false,wechatEnabled=true}:{demo:boolean;wechat:boolean;bind?:boolean;wechatEnabled?:boolean}){
   const [mode,setMode]=useState(bind?'bind':'login');
   const [busy,setBusy]=useState(''),[error,setError]=useState('');
@@ -29,7 +30,7 @@ export default function Login({demo,wechat,bind=false,wechatEnabled=true}:{demo:
       <form onSubmit={submit} className="form-stack">
         <label>{adminMode&&mode==='login'?'管理员账号':'学号'}<input name="code" autoComplete="username" inputMode={adminMode?'text':'numeric'} placeholder={adminMode&&mode==='login'?'请输入管理员账号':'请输入你的学号'} required maxLength={40}/></label>
         {mode!=='login'&&<label>姓名<input name="name" autoComplete="name" placeholder="请输入班级名单中的真实姓名" required maxLength={30}/></label>}
-        {(mode!=='bind'||bindExisting)&&<label>{mode==='register'?'设置密码':'密码'}<input type="password" name="password" autoComplete={mode==='register'?'new-password':'current-password'} placeholder={mode==='register'?'至少 10 位，请勿与他人共享':'请输入密码'} required minLength={mode==='register'?10:1} maxLength={128}/></label>}
+        {(mode!=='bind'||bindExisting)&&<label>{mode==='register'?'设置密码':'密码'}<input type="password" name="password" autoComplete={mode==='register'?'new-password':'current-password'} placeholder={mode==='register'?`至少 ${MIN_PASSWORD_LENGTH} 位，请勿与他人共享`:'请输入密码'} required minLength={mode==='register'?MIN_PASSWORD_LENGTH:1} maxLength={128}/></label>}
         {error&&<div className="form-error" role="alert">{error}</div>}
         <Button variant="primary full" busy={!!busy} type="submit">{mode==='bind'?'确认身份':mode==='register'?'注册':'登录'}<ArrowRight size={17}/></Button>
       </form>
