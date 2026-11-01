@@ -53,5 +53,16 @@ test('低精度、旧缓存及缺失精度不会被改写为可通过的位置',
 test('脱敏诊断不复制设备坐标、账号字段或系统原始错误内容',()=>{
   const event={method:'single-balanced',outcome:'error',elapsedMs:12000,code:3,latitude:31.2,longitude:121.4,message:'private raw text'} as LocationDiagnostic;
   const report=locationReport({userAgent:'Fixture HarmonyOS',strategy:'compatible',elapsedMs:45000,status:'technical',permission:'granted',events:[event]});
-  assert.ok(report.includes('location-v3'));assert.ok(report.includes('compatible'));assert.ok(!/latitude|longitude|private raw text|password|studentId/.test(report));
+  assert.ok(report.includes('location-v4'));assert.ok(report.includes('compatible'));assert.ok(!/latitude|longitude|private raw text|password|studentId/.test(report));
+});
+
+test('鸿蒙返回数据被拒绝时保留具体字段原因，不误报为系统未回调',async()=>{
+  const events:LocationDiagnostic[]=[],d=device((_i,success)=>success({...position(20),timestamp:0}));
+  await assert.rejects(browserLocation({strategy:'compatible',timeoutMs:100,onDiagnostic:e=>events.push(e)},d.geo),/已返回定位数据.*采集时间格式无效/);
+  const invalid=events.filter(e=>e.outcome==='invalid');assert.equal(invalid.length,3);assert.ok(invalid.every(e=>e.sample?.issue==='invalid-timestamp'&&e.sample.timestampValue===0&&e.sample.coordinates==='valid'));
+});
+
+test('兼容策略接受原值为数字文本的毫秒采集时间，保留真实精度与时间',async()=>{
+  const at=Date.now()-2000,d=device((_i,success)=>success({...position(20),timestamp:String(at)} as unknown as GeolocationPosition));
+  const result=await browserLocation({strategy:'compatible',timeoutMs:100},d.geo);assert.equal(result.capturedAt,at);assert.equal(result.accuracy,20);
 });

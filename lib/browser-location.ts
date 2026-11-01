@@ -1,11 +1,12 @@
-import {readLocation,LocationFailure,type LocationOptions,type StudyLocation,type LocationDiagnostic} from './location';
+import {LocationFailure,type LocationOptions,type StudyLocation,type LocationDiagnostic,type LocationSampleIssue} from './location';
 import {compatibleLocation} from './compatible-location';
+import {browserPosition,invalidPositionMessage} from './browser-position';
 export function browserLocation(options:LocationOptions={},geo=navigator.geolocation):Promise<StudyLocation>{
   if(geo&&options.strategy==='compatible')return compatibleLocation(options,geo);
   return new Promise((resolve,reject)=>{
     if(!geo){reject(new LocationFailure('当前浏览器不支持定位，请在手机微信中打开','technical'));return;}
     const timeout=Math.max(1,options.timeoutMs??45000),target=options.targetAccuracy??50,maxAge=(options.maxAgeSeconds??60)*1000,started=Date.now();
-    let settled=false,watchId:number|undefined,best:StudyLocation|undefined,networkStarted=false;
+    let settled=false,watchId:number|undefined,best:StudyLocation|undefined,lastInvalid:LocationSampleIssue|undefined,networkStarted=false;
     let deadline:ReturnType<typeof setTimeout>|undefined,networkTimer:ReturnType<typeof setTimeout>|undefined;
     const fresh=(p:StudyLocation)=>Number.isFinite(p.capturedAt)&&p.capturedAt>0&&Date.now()-p.capturedAt<=maxAge&&p.capturedAt<=Date.now()+10000;
     const clean=()=>{clearTimeout(deadline);clearTimeout(networkTimer);if(watchId!==undefined)try{geo.clearWatch(watchId);}catch{/* Some embedded browsers expose only a partial geolocation API. */}options.signal?.removeEventListener('abort',cancel);};
@@ -13,14 +14,13 @@ export function browserLocation(options:LocationOptions={},geo=navigator.geoloca
     const cancel=()=>finish(new LocationFailure('已取消定位，可重新尝试','cancelled'));
     const receive=(value:GeolocationPosition,method:LocationDiagnostic['method']='watch')=>{
       if(settled)return;
-      try{
-        if(!Number.isFinite(value.timestamp)||value.timestamp<=0)return;
-        const point=readLocation(value.coords,'wgs84',value.timestamp);if(!fresh(point))return;
-        options.onDiagnostic?.({method,outcome:'sample',elapsedMs:Date.now()-started,accuracy:point.accuracy});
+      const parsed=browserPosition(value,maxAge),point=parsed.position;
+      if(point){
+        options.onDiagnostic?.({method,outcome:'sample',elapsedMs:Date.now()-started,accuracy:point.accuracy,sample:parsed.sample});
         if(!best||!fresh(best)||point.accuracy<best.accuracy||point.accuracy===best.accuracy&&point.capturedAt>best.capturedAt)best=point;
         options.onProgress?.({stage:best.accuracy<=target?'locating':'improving',accuracy:best.accuracy});
         if(best.accuracy<=target)finish(undefined,best);
-      }catch{/* Ignore malformed samples; never manufacture an accuracy value. */}
+      }else{lastInvalid=parsed.sample.issue;options.onDiagnostic?.({method,outcome:'invalid',elapsedMs:Date.now()-started,sample:parsed.sample});}
     };
     const failure=(error:GeolocationPositionError,method:LocationDiagnostic['method']='watch')=>{
       if(settled)return;
@@ -35,7 +35,7 @@ export function browserLocation(options:LocationOptions={},geo=navigator.geoloca
     };
     if(options.signal?.aborted){cancel();return;}
     options.signal?.addEventListener('abort',cancel,{once:true});options.onProgress?.({stage:'locating'});
-    deadline=setTimeout(()=>{if(best&&fresh(best))finish(undefined,best);else finish(new LocationFailure('本次仍未取得可靠位置。请到窗边或走廊重试，确认系统精确定位和 Wi-Fi 已开启；仍失败请联系管理员核实到场。','technical'));},timeout);
+    deadline=setTimeout(()=>{if(best&&fresh(best))finish(undefined,best);else finish(new LocationFailure(lastInvalid?invalidPositionMessage(lastInvalid):'本次仍未取得可靠位置。请到窗边或走廊重试，确认系统精确定位和 Wi-Fi 已开启；仍失败请联系管理员核实到场。','technical'));},timeout);
     networkTimer=setTimeout(network,Math.min(12000,Math.max(1,timeout/2)));
     options.onDiagnostic?.({method:typeof geo.watchPosition==='function'?'watch':'single-high',outcome:'started',elapsedMs:0});
     try{
