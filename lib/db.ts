@@ -3,7 +3,7 @@ import { defaultRules } from './domain';
 import { mkdirSync } from 'node:fs';
 import { databaseConfig } from './database-config';
 import {resolveClassPolicy,type ClassPolicy} from './class-policy';
-export interface ClassSettings {className:string;capacity:number|null;adminEmails?:string[];locationConfigured:boolean;currentTermId?:string;policy:ClassPolicy}
+export interface ClassSettings {className:string;capacity:number|null;adminEmails?:string[];locationConfigured:boolean;currentTermId?:string;leaveProofGuidance?:string;policy:ClassPolicy}
 export type Connection = Client | Transaction;
 export type DBRow = Record<string, any>;
 // Bump whenever migrate() gains a schema/index change; this is persisted per DB.
@@ -109,7 +109,7 @@ async function migrate() {
   await run('INSERT OR IGNORE INTO settings(id,value) VALUES(1,?)',[JSON.stringify({ className: '我的班级', capacity: null, adminEmails: [], locationConfigured: false })]);
   await run('INSERT OR IGNORE INTO defaults_versions(id,effective_from,rules_json,created_at) VALUES(?,?,?,?)',['initial','2000-01-01',JSON.stringify(defaultRules),Date.now()]);
 }
-export function settingsFromJSON(json:string):ClassSettings {const value=JSON.parse(json);return {...value,policy:resolveClassPolicy(value.policy)};}
+export function settingsFromJSON(json:string):ClassSettings {const value=JSON.parse(json);return {...value,leaveProofGuidance:typeof value.leaveProofGuidance==='string'?value.leaveProofGuidance:'',policy:resolveClassPolicy(value.policy)};}
 export async function settings(c: Connection = db()):Promise<ClassSettings> { return settingsFromJSON((await one('SELECT value FROM settings WHERE id=1',[],c)).value); }
 export async function rulesFor(date: string,c: Connection = db()) {
   return JSON.parse((await one('SELECT rules_json FROM defaults_versions WHERE effective_from<=? ORDER BY effective_from DESC,created_at DESC LIMIT 1',[date],c)).rules_json);

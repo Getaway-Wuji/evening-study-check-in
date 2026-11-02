@@ -45,7 +45,7 @@ export async function bootstrap(user: DBRow) {
   });
   const {sessions,checkins,leaves,items,students,files,versions,makeups,members}=data,config=settingsFromJSON(data.config[0].value),timetable=timetableFromRows(data.terms,data.recurring||[]),jobs=data.jobs||[],logs=data.logs||[];
   const studentCount=admin?students.length:Number(data.count[0].n);
-  return { user,studentCount,...timetable,recurring:admin?timetable.recurring:[],terms:admin?timetable.terms:timetable.terms.filter(t=>t.id===config.currentTermId),settings:admin?config:{className:config.className,capacity:config.capacity,locationConfigured:config.locationConfigured,currentTermId:config.currentTermId,policy:config.policy,adminEmails:undefined},
+  return { user,studentCount,...timetable,recurring:admin?timetable.recurring:[],terms:admin?timetable.terms:timetable.terms.filter(t=>t.id===config.currentTermId),settings:admin?config:{className:config.className,capacity:config.capacity,locationConfigured:config.locationConfigured,currentTermId:config.currentTermId,leaveProofGuidance:config.leaveProofGuidance,policy:config.policy,adminEmails:undefined},
     sessions:sessions.filter(s=>admin||members.some(m=>m.session_id===s.id)).map(s=>({...s,rules:JSON.parse(s.rules_json),rules_json:undefined}) as DBRow & {rules:Rules}),
     checkins:checkins.map(c=>({...c,method:c.source_coords==='manual'?'manual':c.source_coords?.startsWith('makeup:')?'makeup':'standard',photoIds:JSON.parse(c.photo_ids),rule_snapshot:undefined,source_coords:undefined}) as DBRow & {photoIds:string[];method:string}),
     makeups:makeups.map(m=>({...m,locationName:JSON.parse(m.rule_snapshot).locationName,photoIds:JSON.parse(m.photo_ids),rule_snapshot:undefined}) as DBRow & {photoIds:string[];locationName:string}),
@@ -147,6 +147,12 @@ export async function command(user: DBRow, raw: unknown): Promise<Record<string,
       if(capacity!==null&&capacity<count)throw new Error(`人数上限不能少于当前名册的 ${count} 人，请保留现有人数或留空取消上限`);
       await run('UPDATE settings SET value=? WHERE id=1',[JSON.stringify({...previous,...input,capacity}),],tx);
       await audit(user.id,'更新系统设置',input,tx);return {message:'系统设置已保存'};
+    }
+    if(action==='settings.proofGuidance.save'){
+      const {text}=z.object({text:z.string().trim().max(2000)}).parse(data),previous=await settings(tx);
+      await run('UPDATE settings SET value=? WHERE id=1',[JSON.stringify({...previous,leaveProofGuidance:text})],tx);
+      await audit(user.id,'更新请假材料上传提示',{text},tx);
+      return {message:text?'请假材料上传提示已保存':'已关闭请假材料上传提示'};
     }
     if(action==='policy.save'){
       const policy=classPolicySchema.parse(data),previous=await settings(tx);
