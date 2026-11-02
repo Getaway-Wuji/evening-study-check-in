@@ -1,13 +1,15 @@
 'use client';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useState,useEffect,useRef } from 'react';
 import { BookOpen,LayoutDashboard,ClipboardCheck,CalendarDays,Users,Settings2,Bell,LogOut,ChevronRight,PanelLeftClose,GraduationCap,History,FilePlus2,UserRound,ArrowUpRight,Clock3,MapPin,ArrowRight,Check,Sun,Download,MessageCircle } from 'lucide-react';
 import { Provider,useStore,type Data } from './store';
 import { Button,Badge,Empty,api } from './common';
 import { dateCN,period,aggregateLeave } from '@/lib/domain';
-import { Attendance,Leaves,Schedule,Students,Settings,Notifications } from './manage';
-import { StudentHome,StudentLeave,StudentHistory,StudentProfile } from './student';
-import {StudentMakeups,AdminMakeups} from './makeups';
+const PanelLoading=()=> <section className="card" role="status">正在加载页面…</section>;
+const Attendance=dynamic(()=>import('./manage').then(m=>m.Attendance),{loading:PanelLoading}),Leaves=dynamic(()=>import('./manage').then(m=>m.Leaves),{loading:PanelLoading}),Schedule=dynamic(()=>import('./manage').then(m=>m.Schedule),{loading:PanelLoading}),Students=dynamic(()=>import('./manage').then(m=>m.Students),{loading:PanelLoading}),Settings=dynamic(()=>import('./manage').then(m=>m.Settings),{loading:PanelLoading}),Notifications=dynamic(()=>import('./manage').then(m=>m.Notifications),{loading:PanelLoading});
+const StudentHome=dynamic(()=>import('./student').then(m=>m.StudentHome),{loading:PanelLoading}),StudentLeave=dynamic(()=>import('./student').then(m=>m.StudentLeave),{loading:PanelLoading}),StudentHistory=dynamic(()=>import('./student').then(m=>m.StudentHistory),{loading:PanelLoading}),StudentProfile=dynamic(()=>import('./student').then(m=>m.StudentProfile),{loading:PanelLoading});
+const StudentMakeups=dynamic(()=>import('./makeups').then(m=>m.StudentMakeups),{loading:PanelLoading}),AdminMakeups=dynamic(()=>import('./makeups').then(m=>m.AdminMakeups),{loading:PanelLoading});
 export function prettyDate(date:string,weekday=true){return new Date(date+'T12:00:00+08:00').toLocaleDateString('zh-CN',{month:'long',day:'numeric',...(weekday?{weekday:'long' as const}:{})});}
 export function prettyTime(n:number){return new Date(n).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Shanghai'});}
 export function studentState(d:Data,s:any,userId:string){
@@ -24,7 +26,7 @@ export function sessionStats(d:Data,s:any){const members=s&&!s.cancelled?d.membe
 const adminNav=[['overview','班级概览',LayoutDashboard],['attendance','考勤记录',ClipboardCheck],['leaves','请假审批',FilePlus2],['makeup','补签审核',ClipboardCheck],['schedule','打卡安排',CalendarDays],['students','学生名单',Users]] as const;
 const studentNav=[['overview','今日打卡',LayoutDashboard],['history','我的记录',History],['leave','晚自习请假',FilePlus2],['makeup','人工补签',ClipboardCheck],['profile','个人资料',UserRound]] as const;
 const titles:Record<string,string>={overview:'班级概览',attendance:'考勤记录',leaves:'请假审批',makeup:'人工补签',schedule:'打卡安排',students:'学生名单',settings:'系统设置',notifications:'通知中心',history:'我的记录',leave:'晚自习请假',profile:'个人资料'};
-export default function Dashboard(props:{mode:'admin'|'student';section:string}){return <Provider><Shell {...props}/></Provider>;}
+export default function Dashboard({initialData,...props}:{mode:'admin'|'student';section:string;initialData?:Data}){return <Provider initialData={initialData}><Shell {...props}/></Provider>;}
 function Shell({mode,section}:{mode:'admin'|'student';section:string}){
   const {d}=useStore(),[mobile,setMobile]=useState(false),admin=mode==='admin',nav=admin?adminNav:studentNav,pending=d.leaves.filter(l=>aggregateLeave(l.items)==='pending').length,base=admin?'/admin':'/student';
   const sidebarRef=useRef<HTMLElement>(null);

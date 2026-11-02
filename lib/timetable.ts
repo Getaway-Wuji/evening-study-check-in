@@ -1,13 +1,17 @@
 import { z } from 'zod';
 import type { InStatement } from '@libsql/client';
-import { rows,one,run,settings,audit,businessNow,type Connection,type DBRow } from './db';
+import { rows,one,run,settings,audit,businessNow,readBatch,type Connection,type DBRow } from './db';
 import { daySchema,rulesSchema,weekdaysSchema } from './validation';
 import { defaultRules,dateCN,period,type Rules } from './domain';
 import { semesterDate,semesterWeek,rangesOverlap,resolveWeeklyRules,weekdayName,type AcademicTerm,type WeeklyRule } from './timetable-domain';
 
 export async function readTimetable(c:Connection){
-  const terms=(await rows('SELECT * FROM academic_terms ORDER BY first_monday DESC,created_at DESC',[],c)).map(t=>({id:t.id,name:t.name,firstMonday:t.first_monday,totalWeeks:t.total_weeks,weekdays:JSON.parse(t.weekdays_json),revision:t.revision,publishedRevision:t.published_revision}) as AcademicTerm);
-  const recurring=(await rows('SELECT * FROM recurring_rules ORDER BY weekday,start_week,created_at',[],c)).map(r=>({id:r.id,termId:r.term_id,weekday:r.weekday,startWeek:r.start_week,endWeek:r.end_week,rules:JSON.parse(r.rules_json),inheritTime:!!r.inherit_time,enabled:!!r.enabled}) as WeeklyRule);
+  const {terms,recurring}=await readBatch({terms:'SELECT * FROM academic_terms ORDER BY first_monday DESC,created_at DESC',recurring:'SELECT * FROM recurring_rules ORDER BY weekday,start_week,created_at'},c);
+  return timetableFromRows(terms,recurring);
+}
+export function timetableFromRows(termRows:DBRow[],ruleRows:DBRow[]){
+  const terms=termRows.map(t=>({id:t.id,name:t.name,firstMonday:t.first_monday,totalWeeks:t.total_weeks,weekdays:JSON.parse(t.weekdays_json),revision:t.revision,publishedRevision:t.published_revision}) as AcademicTerm);
+  const recurring=ruleRows.map(r=>({id:r.id,termId:r.term_id,weekday:r.weekday,startWeek:r.start_week,endWeek:r.end_week,rules:JSON.parse(r.rules_json),inheritTime:!!r.inherit_time,enabled:!!r.enabled}) as WeeklyRule);
   return {terms,recurring};
 }
 export interface PlanEntry {date:string;week:number;weekday:number;action:'create'|'update'|'unchanged'|'protected'|'locked'|'cancel'|'gap'|'conflict';ruleId?:string;rules?:Rules;location:string;sessionId?:string;reason?:string}

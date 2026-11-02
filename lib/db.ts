@@ -1,4 +1,4 @@
-import { createClient, type Client, type Transaction, type InValue } from '@libsql/client';
+import { createClient, type Client, type Transaction, type InValue, type InStatement } from '@libsql/client';
 import { defaultRules } from './domain';
 import { mkdirSync } from 'node:fs';
 import { databaseConfig } from './database-config';
@@ -6,6 +6,8 @@ import {resolveClassPolicy,type ClassPolicy} from './class-policy';
 export interface ClassSettings {className:string;capacity:number|null;adminEmails?:string[];locationConfigured:boolean;currentTermId?:string;policy:ClassPolicy}
 export type Connection = Client | Transaction;
 export type DBRow = Record<string, any>;
+// Bump whenever migrate() gains a schema/index change; this is persisted per DB.
+const SCHEMA_VERSION=7;
 const globalDB = globalThis as unknown as { studyDB?: Client; schemaReady?: Promise<void>; schemaVersion?:number; writeTail?:Promise<void> };
 export function db() {
   if (!globalDB.studyDB) {
@@ -20,6 +22,10 @@ export async function rows<T = DBRow>(sql: string, args: InValue[] = [], c: Conn
 }
 export async function one<T = DBRow>(sql: string, args: InValue[] = [], c: Connection = db()) { return (await rows<T>(sql,args,c))[0]; }
 export async function run(sql: string, args: InValue[] = [], c: Connection = db()) { return c.execute({ sql,args }); }
+export async function readBatch(queries:Record<string,InStatement>,c:Connection=db()):Promise<Record<string,DBRow[]>>{
+  const keys=Object.keys(queries),results=await c.batch(keys.map(key=>queries[key]));
+  return Object.fromEntries(keys.map((key,index)=>[key,results[index].rows])) as unknown as Record<string,DBRow[]>;
+}
 export async function transaction<T>(fn: (t: Transaction) => Promise<T>): Promise<T> {
   // 单进程写入排队；跨 Vercel 实例由数据库事务与唯一约束共同保护。
   const previous=globalDB.writeTail||Promise.resolve();let release!:()=>void;
@@ -38,9 +44,17 @@ export async function transaction<T>(fn: (t: Transaction) => Promise<T>): Promis
   }finally{release();}
 }
 export async function ready() {
-  if(globalDB.schemaVersion!==6){globalDB.schemaReady=undefined;globalDB.schemaVersion=6;}
-  if (!globalDB.schemaReady) globalDB.schemaReady = migrate().catch(e=>{ globalDB.schemaReady=undefined; throw e; });
+  if(globalDB.schemaVersion!==SCHEMA_VERSION){globalDB.schemaReady=undefined;globalDB.schemaVersion=SCHEMA_VERSION;}
+  if (!globalDB.schemaReady) globalDB.schemaReady = ensureSchema().catch(e=>{ globalDB.schemaReady=undefined; throw e; });
   await globalDB.schemaReady;
+}
+async function ensureSchema(){
+  // Connection setup remains separate from the read batch: SQLite ignores changes
+  // to foreign_keys inside a transaction. Only schema metadata is cached.
+  await db().executeMultiple('PRAGMA foreign_keys=ON;'+(databaseConfig().url.startsWith('file:')?'PRAGMA journal_mode=WAL;':''));
+  if(Number((await one('PRAGMA user_version')).user_version)===SCHEMA_VERSION)return;
+  await migrate();
+  await run(`PRAGMA user_version=${SCHEMA_VERSION}`);
 }
 async function migrate() {
   if(databaseConfig().url.startsWith('file:'))await db().executeMultiple('PRAGMA journal_mode=WAL;');
@@ -71,6 +85,13 @@ async function migrate() {
     CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, expires_at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS idx_auth_expiry ON auth_sessions(expires_at);
     CREATE INDEX IF NOT EXISTS idx_email_due ON email_jobs(status,next_attempt);
+    CREATE INDEX IF NOT EXISTS idx_members_user ON session_members(user_id,session_id);
+    CREATE INDEX IF NOT EXISTS idx_checkins_user ON checkins(user_id,session_id);
+    CREATE INDEX IF NOT EXISTS idx_leaves_user ON leaves(user_id,created_at);
+    CREATE INDEX IF NOT EXISTS idx_leave_items_user ON leave_items(user_id,session_id);
+    CREATE INDEX IF NOT EXISTS idx_files_user ON files(user_id,ready);
+    CREATE INDEX IF NOT EXISTS idx_makeups_user ON makeup_requests(user_id,created_at);
+    CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC);
   `);
   const columns=await rows('PRAGMA table_info(sessions)');
   for(const [name,type] of [['term_id','TEXT'],['recurrence_id','TEXT'],['week_number','INTEGER']]){
@@ -83,7 +104,8 @@ async function migrate() {
   await run('INSERT OR IGNORE INTO settings(id,value) VALUES(1,?)',[JSON.stringify({ className: '我的班级', capacity: null, adminEmails: [], locationConfigured: false })]);
   await run('INSERT OR IGNORE INTO defaults_versions(id,effective_from,rules_json,created_at) VALUES(?,?,?,?)',['initial','2000-01-01',JSON.stringify(defaultRules),Date.now()]);
 }
-export async function settings(c: Connection = db()):Promise<ClassSettings> { const value=JSON.parse((await one('SELECT value FROM settings WHERE id=1',[],c)).value);return {...value,policy:resolveClassPolicy(value.policy)}; }
+export function settingsFromJSON(json:string):ClassSettings {const value=JSON.parse(json);return {...value,policy:resolveClassPolicy(value.policy)};}
+export async function settings(c: Connection = db()):Promise<ClassSettings> { return settingsFromJSON((await one('SELECT value FROM settings WHERE id=1',[],c)).value); }
 export async function rulesFor(date: string,c: Connection = db()) {
   return JSON.parse((await one('SELECT rules_json FROM defaults_versions WHERE effective_from<=? ORDER BY effective_from DESC,created_at DESC LIMIT 1',[date],c)).rules_json);
 }

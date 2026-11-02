@@ -1,13 +1,13 @@
 import { z } from 'zod';
 import { HTTPError } from './auth';
-import { ready, rows, one, run, transaction, audit, settings, rulesFor, businessNow, demoMode, db, type DBRow, type Connection } from './db';
+import { ready, rows, one, run, transaction, audit, settings, settingsFromJSON,readBatch,rulesFor, businessNow, demoMode, db, type DBRow, type Connection } from './db';
 import { dateCN, validDate, addDays, period, timeMinutes, checkLocation, type Rules } from './domain';
 import { normalizeStudentCode } from './identity';
 import { rulesSchema,classCapacitySchema,classPolicySchema,locationTimeShape } from './validation';
 import {leaveLabel,leaveDeadline,needsLeaveProof} from './class-policy';
 import { databaseConfig } from './database-config';
 import type { InStatement } from '@libsql/client';
-import { readTimetable,timetableCommand,resolveRecurringDate } from './timetable';
+import { timetableFromRows,timetableCommand,resolveRecurringDate } from './timetable';
 import {wechatSetup} from './wechat-config';
 import {attachments} from './attachments';
 import {makeupCommand,invalidateMakeups} from './makeup';
@@ -30,19 +30,21 @@ export async function createSession(date: string,c: Connection, override?: Rules
 export async function bootstrap(user: DBRow) {
   await ready();
   const admin=user.role==='admin', filter=admin?'':' WHERE user_id=?', args=admin?[]:[user.id];
-  const [config, sessions, checkins, leaves, items, students, files, jobs, logs, versions,timetable,makeups]=await Promise.all([
-    settings(), rows('SELECT * FROM sessions ORDER BY date'),
-    rows('SELECT * FROM checkins'+filter,args), rows('SELECT * FROM leaves'+filter,args), rows<DBRow & {status:string}>('SELECT * FROM leave_items'+filter,args),
-    admin?rows("SELECT id,code,name,role,active,CASE WHEN password_hash IS NOT NULL OR openid IS NOT NULL THEN 1 ELSE 0 END AS registered,CASE WHEN openid IS NOT NULL THEN 1 ELSE 0 END AS wechat FROM users WHERE role='student' ORDER BY code"):rows('SELECT id,code,name,role,active FROM users WHERE id=?',[user.id]),
-    rows('SELECT id,user_id,name,content_type,size,purpose FROM files WHERE ready=1'+(admin?'':' AND user_id=?'),args),
-    admin?rows('SELECT id,leave_id,status,attempts,next_attempt,provider_id,error,created_at FROM email_jobs ORDER BY created_at DESC LIMIT 100'):Promise.resolve([]),
-    admin?rows('SELECT a.*,u.name FROM audit_logs a LEFT JOIN users u ON a.user_id=u.id ORDER BY a.created_at DESC LIMIT 60'):Promise.resolve([]),
-    rows('SELECT * FROM defaults_versions ORDER BY effective_from DESC,created_at DESC'),
-    readTimetable(db()),
-    rows('SELECT * FROM makeup_requests'+filter+' ORDER BY created_at DESC',args),
-  ]);
-  const members=admin?await rows('SELECT * FROM session_members'):await rows('SELECT * FROM session_members WHERE user_id=?',[user.id]);
-  const studentCount=admin?students.length:Number((await one("SELECT COUNT(*) n FROM users WHERE role='student'")).n);
+  const query=(sql:string,values=args)=>({sql,args:values});
+  const data=await readBatch({
+    config:'SELECT value FROM settings WHERE id=1',
+    sessions:admin?'SELECT * FROM sessions ORDER BY date':query('SELECT s.* FROM sessions s JOIN session_members m ON m.session_id=s.id WHERE m.user_id=? ORDER BY s.date'),
+    checkins:query('SELECT * FROM checkins'+filter),leaves:query('SELECT * FROM leaves'+filter),items:query('SELECT * FROM leave_items'+filter),
+    students:admin?"SELECT id,code,name,role,active,CASE WHEN password_hash IS NOT NULL OR openid IS NOT NULL THEN 1 ELSE 0 END AS registered,CASE WHEN openid IS NOT NULL THEN 1 ELSE 0 END AS wechat FROM users WHERE role='student' ORDER BY code":query('SELECT id,code,name,role,active FROM users WHERE id=?'),
+    files:query('SELECT id,user_id,name,content_type,size,purpose FROM files WHERE ready=1'+(admin?'':' AND user_id=?')),
+    versions:'SELECT * FROM defaults_versions ORDER BY effective_from DESC,created_at DESC',
+    terms:'SELECT * FROM academic_terms ORDER BY first_monday DESC,created_at DESC',
+    makeups:query('SELECT * FROM makeup_requests'+filter+' ORDER BY created_at DESC'),
+    members:admin?'SELECT * FROM session_members':query('SELECT * FROM session_members WHERE user_id=?'),
+    ...(admin?{recurring:'SELECT * FROM recurring_rules ORDER BY weekday,start_week,created_at',jobs:'SELECT id,leave_id,status,attempts,next_attempt,provider_id,error,created_at FROM email_jobs ORDER BY created_at DESC LIMIT 100',logs:'SELECT a.*,u.name FROM audit_logs a LEFT JOIN users u ON a.user_id=u.id ORDER BY a.created_at DESC LIMIT 60'}:{count:"SELECT COUNT(*) n FROM users WHERE role='student'"}),
+  });
+  const {sessions,checkins,leaves,items,students,files,versions,makeups,members}=data,config=settingsFromJSON(data.config[0].value),timetable=timetableFromRows(data.terms,data.recurring||[]),jobs=data.jobs||[],logs=data.logs||[];
+  const studentCount=admin?students.length:Number(data.count[0].n);
   return { user,studentCount,...timetable,recurring:admin?timetable.recurring:[],terms:admin?timetable.terms:timetable.terms.filter(t=>t.id===config.currentTermId),settings:admin?config:{className:config.className,capacity:config.capacity,locationConfigured:config.locationConfigured,currentTermId:config.currentTermId,policy:config.policy,adminEmails:undefined},
     sessions:sessions.filter(s=>admin||members.some(m=>m.session_id===s.id)).map(s=>({...s,rules:JSON.parse(s.rules_json),rules_json:undefined}) as DBRow & {rules:Rules}),
     checkins:checkins.map(c=>({...c,method:c.source_coords==='manual'?'manual':c.source_coords?.startsWith('makeup:')?'makeup':'standard',photoIds:JSON.parse(c.photo_ids),rule_snapshot:undefined,source_coords:undefined}) as DBRow & {photoIds:string[];method:string}),

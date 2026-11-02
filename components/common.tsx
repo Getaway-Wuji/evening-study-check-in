@@ -1,7 +1,6 @@
 'use client';
 import { useEffect,useRef,useState,type ReactNode,type FormEvent } from 'react';
 import { X,LoaderCircle,UploadCloud,FileText,Check,Trash2 } from 'lucide-react';
-import { upload } from '@vercel/blob/client';
 import {defaultClassPolicy,uploadLimits} from '@/lib/class-policy';
 export async function api(url:string,body?:unknown){
   const res=await fetch(url,{...(body!==undefined?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),cache:'no-store'});
@@ -35,7 +34,7 @@ export function UploadField({purpose,value,onChange,cameraOnly=false,limits=uplo
         const init=await api('/api/files',{name:file.name,size:file.size,contentType:file.type,purpose});
         let result;
         if(init.local){const fd=new FormData();fd.append('file',file);fd.append('purpose',purpose);const r=await fetch('/api/files',{method:'POST',body:fd});result=await r.json();if(!r.ok)throw new Error(result.error);}
-        else{await upload(init.pathname,file,{access:'private',handleUploadUrl:'/api/files/token',clientPayload:JSON.stringify({id:init.id}),multipart:file.size>4*1024*1024});result=await api(`/api/files/${init.id}`,{});}
+        else{const {upload}=await import('@vercel/blob/client');await upload(init.pathname,file,{access:'private',handleUploadUrl:'/api/files/token',clientPayload:JSON.stringify({id:init.id}),multipart:file.size>4*1024*1024});result=await api(`/api/files/${init.id}`,{});}
         next=[...next,{id:result.id,name:result.name}];onChange(next);
       }
     }catch(e){setError(e instanceof Error?e.message:'上传失败');}finally{setBusy(false);onUploadingChange?.(false);}
