@@ -7,7 +7,7 @@ export interface ClassSettings {className:string;capacity:number|null;adminEmail
 export type Connection = Client | Transaction;
 export type DBRow = Record<string, any>;
 // Bump whenever migrate() gains a schema/index change; this is persisted per DB.
-const SCHEMA_VERSION=7;
+const SCHEMA_VERSION=8;
 const globalDB = globalThis as unknown as { studyDB?: Client; schemaReady?: Promise<void>; schemaVersion?:number; writeTail?:Promise<void> };
 export function db() {
   if (!globalDB.studyDB) {
@@ -52,14 +52,19 @@ async function ensureSchema(){
   // Connection setup remains separate from the read batch: SQLite ignores changes
   // to foreign_keys inside a transaction. Only schema metadata is cached.
   await db().executeMultiple('PRAGMA foreign_keys=ON;'+(databaseConfig().url.startsWith('file:')?'PRAGMA journal_mode=WAL;':''));
-  if(Number((await one('PRAGMA user_version')).user_version)===SCHEMA_VERSION)return;
+  let version:DBRow|undefined;
+  try{version=await one('SELECT version FROM app_schema_version WHERE id=1');}
+  catch(error){if(!/no such table.*app_schema_version/i.test(error instanceof Error?error.message:String(error)))throw error;}
+  if(Number(version?.version)===SCHEMA_VERSION)return;
   await migrate();
-  await run(`PRAGMA user_version=${SCHEMA_VERSION}`);
+  // Turso's HTTP SQL interface does not allow writing PRAGMA user_version.
+  await run('INSERT INTO app_schema_version(id,version) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET version=excluded.version',[SCHEMA_VERSION]);
 }
 async function migrate() {
   if(databaseConfig().url.startsWith('file:'))await db().executeMultiple('PRAGMA journal_mode=WAL;');
   await db().executeMultiple(`
     PRAGMA foreign_keys=ON;
+    CREATE TABLE IF NOT EXISTS app_schema_version (id INTEGER PRIMARY KEY CHECK(id=1),version INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, name TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('student','admin')), password_hash TEXT, openid TEXT UNIQUE, active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS auth_sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), expires_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS wechat_pending (token_hash TEXT PRIMARY KEY, openid TEXT NOT NULL, expires_at INTEGER NOT NULL);

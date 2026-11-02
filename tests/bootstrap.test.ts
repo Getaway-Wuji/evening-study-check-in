@@ -31,16 +31,21 @@ test('首屏读取不缓存业务数据，规则和记录更新后下一次读�
 });
 
 test('新实例仅检查持久化结构版本，不重做建表与初始化，不覆盖业务数据',async()=>{
- const before=await settings();assert.equal((await one('PRAGMA user_version')).user_version,7);
+ const before=await settings();assert.equal((await one('SELECT version FROM app_schema_version WHERE id=1')).version,8);
  const globalState=globalThis as unknown as {schemaReady?:Promise<void>},c=db(),original=c.executeMultiple.bind(c);let setupCalls=0;
  c.executeMultiple=async sql=>{assert.ok(!/CREATE|ALTER|INSERT|UPDATE|DELETE/i.test(sql));setupCalls++;return original(sql);};globalState.schemaReady=undefined;
  try{await ready();assert.equal(setupCalls,1);assert.deepEqual(await settings(),before);assert.equal((await one('SELECT COUNT(*) n FROM users')).n,3);}finally{c.executeMultiple=original;}
 });
 
 test('迁移失败不提前标记完成，后续可以重试，已有名单和设置保留',async()=>{
- await run('PRAGMA user_version=6');const globalState=globalThis as unknown as {schemaReady?:Promise<void>},c=db(),original=c.executeMultiple.bind(c);
+ await run('UPDATE app_schema_version SET version=6 WHERE id=1');const globalState=globalThis as unknown as {schemaReady?:Promise<void>},c=db(),original=c.executeMultiple.bind(c);
  c.executeMultiple=async sql=>{if(sql.includes('CREATE TABLE'))throw Error('fixture migration failure');return original(sql);};globalState.schemaReady=undefined;
- try{await assert.rejects(ready(),/fixture migration failure/);assert.equal((await one('PRAGMA user_version')).user_version,6);}finally{c.executeMultiple=original;}
- await ready();assert.equal((await one('PRAGMA user_version')).user_version,7);assert.equal((await settings()).className,'刚更新的班级名称');assert.equal((await one('SELECT COUNT(*) n FROM users')).n,3);
+ try{await assert.rejects(ready(),/fixture migration failure/);assert.equal((await one('SELECT version FROM app_schema_version WHERE id=1')).version,6);}finally{c.executeMultiple=original;}
+ await ready();assert.equal((await one('SELECT version FROM app_schema_version WHERE id=1')).version,8);assert.equal((await settings()).className,'刚更新的班级名称');assert.equal((await one('SELECT COUNT(*) n FROM users')).n,3);
+});
+test('兼容远程数据库禁止写 PRAGMA user_version 的接口，结构升级与冷启动均使用普通 SQL',async()=>{
+ const c=db(),original=c.execute.bind(c),globalState=globalThis as unknown as {schemaReady?:Promise<void>};
+ c.execute=async(stmt:any,args?:any)=>{const sql=typeof stmt==='string'?stmt:stmt.sql;assert.ok(!/PRAGMA\s+user_version/i.test(sql));return original(stmt,args);};
+ try{await run('UPDATE app_schema_version SET version=6 WHERE id=1');globalState.schemaReady=undefined;await ready();globalState.schemaReady=undefined;await ready();assert.equal((await one('SELECT version FROM app_schema_version WHERE id=1')).version,8);}finally{c.execute=original;}
 });
 test.after(()=>db().close());
