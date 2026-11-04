@@ -11,6 +11,7 @@ import { timetableFromRows,timetableCommand,resolveRecurringDate } from './timet
 import {wechatSetup} from './wechat-config';
 import {attachments} from './attachments';
 import {makeupCommand,invalidateMakeups} from './makeup';
+import {exemptionCommand,requireAttendance} from './exemptions';
 export {attachments} from './attachments';
 export { rulesSchema } from './validation';
 
@@ -19,6 +20,7 @@ const day=z.string().refine(validDate,'日期无效');
 async function member(sessionId: string, userId: string,c: Connection) {
   const s=await one('SELECT s.* FROM sessions s JOIN session_members m ON m.session_id=s.id WHERE s.id=? AND m.user_id=?',[sessionId,userId],c);
   if (!s || s.cancelled) throw new Error('本次晚自习不存在、已取消或不适用于你');
+  await requireAttendance(userId,s.date,c);
   return s;
 }
 export async function createSession(date: string,c: Connection, override?: Rules, reason='') {
@@ -41,6 +43,7 @@ export async function bootstrap(user: DBRow) {
     terms:'SELECT * FROM academic_terms ORDER BY first_monday DESC,created_at DESC',
     makeups:query('SELECT * FROM makeup_requests'+filter+' ORDER BY created_at DESC'),
     members:admin?'SELECT * FROM session_members':query('SELECT * FROM session_members WHERE user_id=?'),
+    exemptions:query('SELECT * FROM attendance_exemptions'+filter+' ORDER BY starts_on DESC,created_at DESC'),
     ...(admin?{recurring:'SELECT * FROM recurring_rules ORDER BY weekday,start_week,created_at',jobs:'SELECT id,leave_id,status,attempts,next_attempt,provider_id,error,created_at FROM email_jobs ORDER BY created_at DESC LIMIT 100',logs:'SELECT a.*,u.name FROM audit_logs a LEFT JOIN users u ON a.user_id=u.id ORDER BY a.created_at DESC LIMIT 60'}:{count:"SELECT COUNT(*) n FROM users WHERE role='student'"}),
   });
   const {sessions,checkins,leaves,items,students,files,versions,makeups,members}=data,config=settingsFromJSON(data.config[0].value),timetable=timetableFromRows(data.terms,data.recurring||[]),jobs=data.jobs||[],logs=data.logs||[];
@@ -50,7 +53,7 @@ export async function bootstrap(user: DBRow) {
     checkins:checkins.map(c=>({...c,method:c.source_coords==='manual'?'manual':c.source_coords?.startsWith('makeup:')?'makeup':'standard',photoIds:JSON.parse(c.photo_ids),rule_snapshot:undefined,source_coords:undefined}) as DBRow & {photoIds:string[];method:string}),
     makeups:makeups.map(m=>({...m,locationName:JSON.parse(m.rule_snapshot).locationName,photoIds:JSON.parse(m.photo_ids),rule_snapshot:undefined}) as DBRow & {photoIds:string[];locationName:string}),
     leaves:leaves.map(l=>({...l,kindLabel:leaveLabel(l as {kind:string},config.policy),proofIds:JSON.parse(l.proof_ids),items:items.filter(i=>i.leave_id===l.id)}) as DBRow & {kindLabel:string;proofIds:string[];items:(DBRow & {status:string})[]}),
-    students,files,jobs,logs,members,defaults:versions.map(v=>({...v,rules:JSON.parse(v.rules_json),rules_json:undefined}) as DBRow & {rules:Rules}),
+    students,files,jobs,logs,members,exemptions:data.exemptions,defaults:versions.map(v=>({...v,rules:JSON.parse(v.rules_json),rules_json:undefined}) as DBRow & {rules:Rules}),
     now:businessNow(),demo:demoMode(),wechat:{oauth:wechatSetup().oauthConfigured,location:wechatSetup().locationConfigured},integrations:admin?{
       wechat:wechatSetup().oauthConfigured,wechatLocation:wechatSetup().locationConfigured,
       email:!!(config.policy.notifications.enabled&&process.env.RESEND_API_KEY&&process.env.MAIL_FROM&&config.adminEmails?.length),
@@ -63,6 +66,7 @@ export async function command(user: DBRow, raw: unknown): Promise<Record<string,
   const studentActions=['checkin','leave.create','leave.withdraw','makeup.create','makeup.withdraw'];
   if (studentActions.includes(action) ? user.role!=='student' : user.role!=='admin') throw new HTTPError(403,'没有执行此操作的权限');
   return transaction(async tx=>{
+    if(action.startsWith('exemption.'))return exemptionCommand(user,action,data,tx);
     if(action.startsWith('makeup.'))return makeupCommand(user,action,data,tx);
     if(action.startsWith('term.')||action.startsWith('recurrence.'))return timetableCommand(user,action,data,tx);
     if (action==='checkin') {
@@ -132,6 +136,10 @@ export async function command(user: DBRow, raw: unknown): Promise<Record<string,
       for(const item of items){
         if(input.decision==='revoked'?item.status!=='approved':item.status!=='pending') continue;
         let status=input.decision;
+        if(status==='approved'){
+          const session=await one('SELECT date FROM sessions WHERE id=?',[item.session_id],tx);
+          if(session)await requireAttendance(item.user_id,session.date,tx);
+        }
         if(status==='approved'&&await one('SELECT id FROM checkins WHERE session_id=? AND user_id=?',[item.session_id,item.user_id],tx)) throw new Error('学生已经打卡，请刷新后重新核对');
         await run('UPDATE leave_items SET status=?,review_note=?,reviewer_id=?,reviewed_at=? WHERE id=?',[status,input.note,user.id,Date.now(),item.id],tx);changed++;
         if(status==='approved')await invalidateMakeups(item.session_id,item.user_id,'本场请假已通过，补签申请失效',tx);

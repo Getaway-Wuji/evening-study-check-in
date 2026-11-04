@@ -4,6 +4,7 @@ import {one,run,audit,settings,businessNow,type DBRow,type Connection} from './d
 import {attachments} from './attachments';
 import {makeupWindow} from './class-policy';
 import type {Rules} from './domain';
+import {requireAttendance} from './exemptions';
 
 export async function invalidateMakeups(sessionId:string,userId:string,reason:string,c:Connection){
   await run("UPDATE makeup_requests SET status='invalid',review_note=?,reviewed_at=? WHERE session_id=? AND user_id=? AND status='pending'",[reason,Date.now(),sessionId,userId],c);
@@ -15,6 +16,7 @@ export async function makeupCommand(user:DBRow,action:string,data:unknown,tx:Con
     const input=z.object({sessionId:z.string(),reason:z.string().trim().min(4,'请至少填写 4 字说明').max(2000),photoIds:z.array(z.string()).min(1,'请上传至少一张现场照片').max(policy.uploads.photoMaxFiles),failureNote:z.string().trim().max(500).default('')}).parse(data);
     const s=await one('SELECT s.* FROM sessions s JOIN session_members m ON m.session_id=s.id WHERE s.id=? AND m.user_id=?',[input.sessionId,user.id],tx);
     if(!s||s.cancelled)throw new Error('本次晚自习不存在、已取消或不适用于你');
+    await requireAttendance(user.id,s.date,tx);
     const rules:Rules=JSON.parse(s.rules_json),window=makeupWindow(s.date,rules,policy),now=businessNow();
     if(!rules.locationRequired)throw new Error('本场不要求定位，请使用正常打卡或联系管理员');
     if(now<window.opensAt)throw new Error('本场尚未开始打卡，不能提前申请补签');
@@ -47,6 +49,7 @@ export async function makeupCommand(user:DBRow,action:string,data:unknown,tx:Con
   if(input.decision==='approved'){
     const s=await one('SELECT s.* FROM sessions s JOIN session_members m ON m.session_id=s.id JOIN users u ON u.id=m.user_id WHERE s.id=? AND m.user_id=? AND u.active=1 AND u.role=\'student\'',[request.session_id,request.user_id],tx);
     if(!s||s.cancelled)throw new Error('场次已取消或学生不再适用，请驳回申请');
+    await requireAttendance(request.user_id,s.date,tx);
     if(await one('SELECT id FROM checkins WHERE session_id=? AND user_id=?',[s.id,request.user_id],tx))throw new Error('学生已成功打卡，请刷新后核对');
     if(await one("SELECT id FROM leave_items WHERE session_id=? AND user_id=? AND status='approved'",[s.id,request.user_id],tx))throw new Error('本场已批准请假，请先撤销请假再处理补签');
     checkinId=crypto.randomUUID();

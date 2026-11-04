@@ -7,7 +7,7 @@ export interface ClassSettings {className:string;capacity:number|null;adminEmail
 export type Connection = Client | Transaction;
 export type DBRow = Record<string, any>;
 // Bump whenever migrate() gains a schema/index change; this is persisted per DB.
-const SCHEMA_VERSION=8;
+const SCHEMA_VERSION=9;
 const globalDB = globalThis as unknown as { studyDB?: Client; schemaReady?: Promise<void>; schemaVersion?:number; writeTail?:Promise<void> };
 export function db() {
   if (!globalDB.studyDB) {
@@ -75,6 +75,8 @@ async function migrate() {
     CREATE TABLE IF NOT EXISTS academic_terms (id TEXT PRIMARY KEY,name TEXT NOT NULL,first_monday TEXT NOT NULL,total_weeks INTEGER NOT NULL,weekdays_json TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 1,published_revision INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS recurring_rules (id TEXT PRIMARY KEY,term_id TEXT NOT NULL REFERENCES academic_terms(id),weekday INTEGER NOT NULL,start_week INTEGER NOT NULL,end_week INTEGER NOT NULL,rules_json TEXT NOT NULL,inherit_time INTEGER NOT NULL DEFAULT 1,enabled INTEGER NOT NULL DEFAULT 1,created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS session_members (session_id TEXT NOT NULL REFERENCES sessions(id), user_id TEXT NOT NULL REFERENCES users(id), PRIMARY KEY(session_id,user_id));
+    CREATE TABLE IF NOT EXISTS attendance_exemptions (id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),starts_on TEXT NOT NULL,ends_on TEXT,reason TEXT NOT NULL DEFAULT '',created_by TEXT NOT NULL REFERENCES users(id),created_at INTEGER NOT NULL,cancelled_at INTEGER,CHECK(ends_on IS NULL OR ends_on>=starts_on));
+    CREATE INDEX IF NOT EXISTS idx_exemptions_user_dates ON attendance_exemptions(user_id,starts_on,ends_on) WHERE cancelled_at IS NULL;
     CREATE TABLE IF NOT EXISTS checkins (id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id), user_id TEXT NOT NULL REFERENCES users(id), submitted_at INTEGER NOT NULL, latitude REAL, longitude REAL, accuracy REAL, distance REAL, captured_at INTEGER, source_coords TEXT, photo_ids TEXT NOT NULL DEFAULT '[]', note TEXT NOT NULL DEFAULT '', rule_snapshot TEXT NOT NULL, rule_version INTEGER NOT NULL, UNIQUE(session_id,user_id));
     CREATE TABLE IF NOT EXISTS leaves (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), kind TEXT NOT NULL, reason TEXT NOT NULL, proof_ids TEXT NOT NULL, created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS leave_items (id TEXT PRIMARY KEY, leave_id TEXT NOT NULL REFERENCES leaves(id), user_id TEXT NOT NULL REFERENCES users(id), session_id TEXT NOT NULL REFERENCES sessions(id), status TEXT NOT NULL, review_note TEXT, reviewer_id TEXT, reviewed_at INTEGER);

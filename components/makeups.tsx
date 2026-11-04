@@ -6,6 +6,7 @@ import {useStore} from './store';
 import {Button,Badge,Dialog,Empty,UploadField,type Uploaded} from './common';
 import {PageHeading,prettyDate} from './dashboard';
 import {makeupWindow,uploadLimits} from '@/lib/class-policy';
+import {exemptionFor} from '@/lib/attendance';
 import styles from './makeups.module.css';
 
 const labels:Record<string,string>={pending:'补签待审核',approved:'补签已通过',rejected:'已驳回',withdrawn:'已撤回',invalid:'已失效'};
@@ -19,7 +20,7 @@ export function StudentMakeups(){
   const {d,act,busy}=useStore(),policy=d.settings.policy;
   const eligible=d.sessions.filter(s=>{
     const window=makeupWindow(s.date,s.rules,policy);
-    return !s.cancelled&&s.rules.locationRequired&&d.members.some(m=>m.session_id===s.id&&m.user_id===d.user.id)&&d.now>=window.opensAt&&d.now<window.closesAt&&!d.checkins.some(c=>c.session_id===s.id)&&!d.makeups.some(m=>m.session_id===s.id&&['pending','approved'].includes(m.status))&&!d.leaves.some(l=>l.items.some(i=>i.session_id===s.id&&i.status==='approved'));
+    return !exemptionFor(d,d.user.id,s.date)&&!s.cancelled&&s.rules.locationRequired&&d.members.some(m=>m.session_id===s.id&&m.user_id===d.user.id)&&d.now>=window.opensAt&&d.now<window.closesAt&&!d.checkins.some(c=>c.session_id===s.id)&&!d.makeups.some(m=>m.session_id===s.id&&['pending','approved'].includes(m.status))&&!d.leaves.some(l=>l.items.some(i=>i.session_id===s.id&&i.status==='approved'));
   }).reverse();
   const [selected,setSelected]=useState(()=>eligible[0]?.id||''),[reason,setReason]=useState(''),[failureNote,setFailureNote]=useState(''),[photos,setPhotos]=useState<Uploaded[]>([]),[uploading,setUploading]=useState(false);
   const session=eligible.find(s=>s.id===selected),deadline=session?makeupWindow(session.date,session.rules,policy).closesAt:0;
@@ -29,7 +30,7 @@ export function StudentMakeups(){
     <label>定位报错或现象（选填）<textarea maxLength={500} rows={2} value={failureNote} onChange={e=>setFailureNote(e.target.value)} placeholder="例如：在教室多次等待 45 秒，仍提示未取得可靠位置"/></label>
     <div><label className="form-label">现场照片（必填）</label><p className="field-hint">请提供能辨认教室、门牌或现场环境的真实到场照片。可拍摄或选择已拍照片，照片不能自动证明拍摄时间，管理员需核实。</p><UploadField purpose="photo" value={photos} onChange={setPhotos} limits={uploadLimits(policy,'photo')} onUploadingChange={setUploading}/></div>
     <Button variant="primary full" busy={busy} disabled={uploading||!photos.length||reason.trim().length<4}><ClipboardCheck size={18}/>{uploading?'请等待照片上传完成':'提交补签申请'}</Button>
-  </form>:<Empty title={policy.makeup.enabled?'暂无可申请的场次':'本班暂未开放补签申请'} text={policy.makeup.enabled?'仅显示已开始、仍在申请期限内且未打卡或获批请假的定位场次。超期请联系管理员。':'已有申请仍可在下方查看审核结果。'}/>}{policy.makeup.enabled&&!session&&eligible.length>0&&<Button type="button" onClick={()=>{setSelected(eligible[0].id);setReason('');setFailureNote('');setPhotos([]);}}>重新选择可申请场次</Button>}</section><aside className={`card ${styles.guide}`}><ShieldCheck size={28}/><h2>审核通过才算出勤</h2><ol><li>先尝试正常定位；信号弱时可到窗边或走廊重试。</li><li>仍失败请及时拍摄现场照片，填写到场情况并提交。</li><li>管理员核实后同意或驳回，审核意见会显示在申请记录中。</li></ol><p>本班允许在打卡开放后申请，最晚到正常打卡截止后的 {policy.makeup.hoursAfterClose} 小时。申请待审期间尚未计为打卡成功；审核可在申请截止后进行。</p><Link href="/student" className="text-link">返回正常打卡</Link></aside></div>
+  </form>:<Empty title={policy.makeup.enabled?'暂无可申请的场次':'本班暂未开放补签申请'} text={policy.makeup.enabled?'仅显示已开始、仍在申请期限内且未打卡、未获批请假、未设置免打卡的定位场次。超期请联系管理员。':'已有申请仍可在下方查看审核结果。'}/>}{policy.makeup.enabled&&!session&&eligible.length>0&&<Button type="button" onClick={()=>{setSelected(eligible[0].id);setReason('');setFailureNote('');setPhotos([]);}}>重新选择可申请场次</Button>}</section><aside className={`card ${styles.guide}`}><ShieldCheck size={28}/><h2>审核通过才算出勤</h2><ol><li>先尝试正常定位；信号弱时可到窗边或走廊重试。</li><li>仍失败请及时拍摄现场照片，填写到场情况并提交。</li><li>管理员核实后同意或驳回，审核意见会显示在申请记录中。</li></ol><p>本班允许在打卡开放后申请，最晚到正常打卡截止后的 {policy.makeup.hoursAfterClose} 小时。申请待审期间尚未计为打卡成功；审核可在申请截止后进行。</p><Link href="/student" className="text-link">返回正常打卡</Link></aside></div>
   <section className="card"><div className="card-heading"><h2>我的补签申请</h2><Badge tone="neutral">{d.makeups.length} 份</Badge></div>{d.makeups.length?<div className={styles.list}>{d.makeups.map(m=>{const s=d.sessions.find(s=>s.id===m.session_id);return <article key={m.id} className={styles.record}><div className={styles.heading}><div><strong>{s?.date} · {m.locationName}</strong><p>提交于 {timestamp(m.created_at)}</p></div><Badge tone={tones[m.status]}>{labels[m.status]}</Badge></div><p className={styles.reason}>{m.reason}</p>{m.failure_note&&<p className={styles.note}>定位情况（本人描述）：{m.failure_note}</p>}<Evidence ids={m.photoIds}/>{m.review_note&&<div className={styles.review}><ShieldCheck size={17}/><span>{m.review_note}{m.reviewed_at&&<small>处理于 {timestamp(m.reviewed_at)}</small>}</span></div>}{m.status==='approved'&&<p className="field-hint">已计入本场打卡成功，可在“我的记录”中查看。</p>}{m.status==='pending'&&<Button busy={busy} onClick={()=>void act('makeup.withdraw',{id:m.id})}>撤回申请</Button>}</article>;})}</div>:<Empty title="还没有补签申请" text="提交后，现场照片和审核进度会保存在这里。"/>}</section></>;
 }
 export function AdminMakeups(){
