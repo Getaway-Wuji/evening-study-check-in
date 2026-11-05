@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdirSync} from 'node:fs';
+import type {TransactionMode} from '@libsql/client';
 import {defaultRules,dateCN,addDays} from '../lib/domain';
 import {makeupWindow,resolveClassPolicy} from '../lib/class-policy';
 mkdirSync('.local',{recursive:true});process.env.DATABASE_URL=`file:./.local/makeup-${crypto.randomUUID()}.db`;process.env.DEMO_MODE='false';
 const {ready,db,run,one,rows,settings}=await import('../lib/db');
 const {command,bootstrap,createSession}=await import('../lib/service');
+const {applyAttendanceChange}=await import('../lib/attendance-change');
 await ready();
 const admin={id:'admin',code:'teacher',name:'测试管理员',role:'admin'},other={id:'other',code:'other',name:'其他同学',role:'student'};
 for(const u of [admin,other])await run('INSERT INTO users(id,code,name,role,created_at) VALUES(?,?,?,?,?)',[u.id,u.code,u.name,u.role,Date.now()]);
@@ -48,14 +50,13 @@ test('并发重复申请只保留一份待审，未经审核不产生签到，�
   await assert.rejects(command(other,{action:'makeup.withdraw',data:{id:results[0].id}}),/他人/);
   await assert.rejects(command(admin,{action:'makeup.create',data:f.input}),/权限/);
 });
-test('审核意见必填；并发通过只写一条成功记录，照片、规则与审核人可追溯且不伪造坐标',async()=>{
+test('通过补签可不填意见；并发通过只写一条成功记录，照片、规则与审核人可追溯且不伪造坐标',async()=>{
   const f=await fixture(),result=await f.apply();
-  await assert.rejects(review(result.id,'approved',''),/核实/);
   await run('UPDATE sessions SET rules_json=?,version=version+1 WHERE id=?',[JSON.stringify({...f.rules,locationName:'调整后的其他教室'}),f.sessionId]);
-  const outcomes=await Promise.allSettled(Array.from({length:8},()=>review(result.id)));
+  const outcomes=await Promise.allSettled(Array.from({length:8},()=>review(result.id,'approved','')));
   assert.equal(outcomes.filter(r=>r.status==='fulfilled').length,1);
   const request=await one('SELECT * FROM makeup_requests WHERE id=?',[result.id]),checkins=await rows('SELECT * FROM checkins WHERE user_id=?',[f.student.id]);
-  assert.equal(request.status,'approved');assert.equal(request.reviewer_id,admin.id);assert.equal(checkins.length,1);
+  assert.equal(request.status,'approved');assert.equal(request.review_note,'');assert.equal(request.reviewer_id,admin.id);assert.equal(checkins.length,1);
   const c=checkins[0];assert.equal(request.checkin_id,c.id);assert.equal(c.source_coords,'makeup:'+result.id);assert.deepEqual(JSON.parse(c.photo_ids),f.input.photoIds);assert.equal(c.latitude,null);assert.equal(c.accuracy,null);assert.equal(c.rule_snapshot,request.rule_snapshot);
   const data=await bootstrap(f.student);assert.equal(data.checkins[0].method,'makeup');assert.equal(data.makeups[0].locationName,f.rules.locationName);
   await assert.rejects(f.apply(),/已成功打卡/);
@@ -113,4 +114,44 @@ test('请假审批和补签审核互斥，不同时计入请假及到场；管�
   const f=await fixture(),result=await f.apply();await command(admin,{action:'attendance.manual',data:{sessionId:f.sessionId,studentId:f.student.id,reason:'已线下核实本人到场'}});
   assert.equal((await one('SELECT status FROM makeup_requests WHERE id=?',[result.id])).status,'invalid');await assert.rejects(review(result.id),/已处理/);
 });
+test('管理员直接补录及通过补签允许省略、空白或单字说明，学生补签仍明确要求至少四字',async()=>{
+  for(const reason of [undefined,'','  ','准']){
+    const f=await fixture();
+    const result=await command(admin,{action:'attendance.manual',data:{sessionId:f.sessionId,studentId:f.student.id,...(reason===undefined?{}:{reason})}});
+    assert.equal(result.attendanceChange.checkin.method,'manual');
+    assert.equal((await one('SELECT note FROM checkins WHERE user_id=?',[f.student.id])).note,reason?.trim()?'管理员补录：准':'管理员补录');
+  }
+  for(const note of [undefined,'  ','准']){
+    const f=await fixture(),request=await f.apply();await command(admin,{action:'makeup.review',data:{id:request.id,decision:'approved',...(note===undefined?{}:{note})}});
+    assert.equal((await one('SELECT review_note FROM makeup_requests WHERE id=?',[request.id])).review_note,note?.trim()||'');
+  }
+  const f=await fixture();await assert.rejects(command(f.student,{action:'makeup.create',data:{...f.input,reason:' 三字啊 '}}),/至少填写 4 字/);
+  assert.ok((await command(f.student,{action:'makeup.create',data:{...f.input,reason:' 已经到场 '}})).id);
+});
+
+test('审批一次读取校验、一次批量写入，失败回滚签到、状态与日志，不产生半完成结果',async()=>{
+  const f=await fixture(),request=await f.apply(),c=db(),original=c.transaction.bind(c);let reads=0,batches=0;
+  c.transaction=async (mode?:TransactionMode)=>{const tx=await original(mode),execute=tx.execute.bind(tx),batch=tx.batch.bind(tx);tx.execute=async(stmt,...args)=>{reads++;return execute(stmt,...args);};tx.batch=async stmts=>{batches++;return batch(stmts);};return tx;};
+  try{await review(request.id,'approved','');assert.equal(reads,1);assert.equal(batches,1);}finally{c.transaction=original;}
+  const failed=await fixture(),pending=await failed.apply();
+  await run("CREATE TRIGGER reject_makeup_audit BEFORE INSERT ON audit_logs WHEN NEW.action='审核人工补签申请' BEGIN SELECT RAISE(ABORT,'fixture audit failure'); END");
+  try{await assert.rejects(review(pending.id),/fixture audit failure/);}finally{await run('DROP TRIGGER reject_makeup_audit');}
+  assert.equal((await one('SELECT status FROM makeup_requests WHERE id=?',[pending.id])).status,'pending');assert.equal((await one('SELECT COUNT(*) n FROM checkins WHERE user_id=?',[failed.student.id])).n,0);
+});
+
+test('已提交成功的返回结果立即更新当前考勤，正常刷新后的审批、补录、驳回状态一致',async()=>{
+  for(const kind of ['approved','manual','rejected']){
+    const f=await fixture(),request=await f.apply();
+    await command(f.student,{action:'leave.create',data:{sessionIds:[f.sessionId],kind:'free',reason:'虚构待审请假',proofIds:[]}});
+    const before=await bootstrap(admin);
+    const result=kind==='manual'?await command(admin,{action:'attendance.manual',data:{studentId:f.student.id,sessionId:f.sessionId}}):await review(request.id,kind,kind==='rejected'?'照片不清晰':'');
+    const updated=applyAttendanceChange(before,result.attendanceChange),fresh=await bootstrap(admin);
+    for(const key of ['checkins','makeups','leaves'] as const){
+      const own=(data:typeof fresh)=>data[key].filter(r=>r.user_id===f.student.id).map(row=>JSON.parse(JSON.stringify(row)));
+      assert.deepEqual(own(updated),own(fresh));
+    }
+    assert.ok(!JSON.stringify(result).includes('source_coords'));assert.ok(!JSON.stringify(result).includes('rule_snapshot'));
+  }
+});
+
 test.after(()=>db().close());

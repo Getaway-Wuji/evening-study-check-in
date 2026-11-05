@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { HTTPError } from './auth';
-import { ready, rows, one, run, transaction, audit, settings, settingsFromJSON,readBatch,rulesFor, businessNow, demoMode, db, type DBRow, type Connection } from './db';
+import { ready, rows, one, run, transaction, audit, auditStatement, settings, settingsFromJSON,readBatch,rulesFor, businessNow, demoMode, db, type DBRow, type Connection } from './db';
+import type {AttendanceChange} from './attendance-change';
 import { dateCN, validDate, addDays, period, timeMinutes, checkLocation, type Rules } from './domain';
 import { normalizeStudentCode } from './identity';
 import { rulesSchema,classCapacitySchema,classPolicySchema,locationTimeShape } from './validation';
@@ -240,14 +241,21 @@ export async function command(user: DBRow, raw: unknown): Promise<Record<string,
       return {message:'已重置账号，学生可使用名单中的学号和姓名重新注册；历史考勤保留'};
     }
     if(action==='attendance.manual'){
-      const input=z.object({sessionId:z.string(),studentId:z.string(),reason:z.string().trim().min(4).max(500)}).parse(data);
+      const input=z.object({sessionId:z.string(),studentId:z.string(),reason:z.string().trim().max(500).default('')}).parse(data);
       const s=await member(input.sessionId,input.studentId,tx);
       if(s.date>dateCN(businessNow()))throw new Error('尚未到来的场次不能提前补录签到');
       if(await one("SELECT id FROM leave_items WHERE session_id=? AND user_id=? AND status='approved'",[s.id,input.studentId],tx))throw new Error('请先撤销该场次已批准的请假');
-      await run('INSERT INTO checkins(id,session_id,user_id,submitted_at,source_coords,note,rule_snapshot,rule_version) VALUES(?,?,?,?,?,?,?,?)',[crypto.randomUUID(),s.id,input.studentId,businessNow(),'manual',`管理员补录：${input.reason}`,s.rules_json,s.version],tx);
-      await run("UPDATE leave_items SET status='invalid',review_note='管理员补录签到',reviewed_at=? WHERE session_id=? AND user_id=? AND status='pending'",[Date.now(),s.id,input.studentId],tx);
-      await invalidateMakeups(s.id,input.studentId,'管理员已直接补录签到，无需重复补签',tx);
-      await audit(user.id,'人工补录签到',input,tx);return {message:'已补录并保存操作原因'};
+      const id=crypto.randomUUID(),now=businessNow(),reviewedAt=Date.now(),note=input.reason?`管理员补录：${input.reason}`:'管理员补录';
+      await tx.batch([
+        {sql:'INSERT INTO checkins(id,session_id,user_id,submitted_at,source_coords,note,rule_snapshot,rule_version) VALUES(?,?,?,?,?,?,?,?)',args:[id,s.id,input.studentId,now,'manual',note,s.rules_json,s.version]},
+        {sql:"UPDATE leave_items SET status='invalid',review_note='管理员补录签到',reviewed_at=? WHERE session_id=? AND user_id=? AND status='pending'",args:[reviewedAt,s.id,input.studentId]},
+        {sql:"UPDATE makeup_requests SET status='invalid',review_note='管理员已直接补录签到，无需重复补签',reviewed_at=? WHERE session_id=? AND user_id=? AND status='pending'",args:[reviewedAt,s.id,input.studentId]},
+        auditStatement(user.id,'人工补录签到',input),
+      ]);
+      const attendanceChange:AttendanceChange={sessionId:s.id,userId:input.studentId,now,
+        checkin:{id,session_id:s.id,user_id:input.studentId,submitted_at:now,latitude:null,longitude:null,accuracy:null,distance:null,captured_at:null,photo_ids:'[]',photoIds:[],note,rule_version:s.version,method:'manual'},
+        invalidate:{leaveNote:'管理员补录签到',makeupNote:'管理员已直接补录签到，无需重复补签',reviewedAt}};
+      return {message:'已补录签到',attendanceChange};
     }
     if(action==='email.retry'){
       if(!(await settings(tx)).policy.notifications.enabled)throw new Error('本班已关闭邮件通知，请先在系统设置中启用');

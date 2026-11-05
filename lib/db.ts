@@ -117,7 +117,10 @@ export async function rulesFor(date: string,c: Connection = db()) {
   return JSON.parse((await one('SELECT rules_json FROM defaults_versions WHERE effective_from<=? ORDER BY effective_from DESC,created_at DESC LIMIT 1',[date],c)).rules_json);
 }
 export async function audit(userId: string, action: string, detail: unknown,c: Connection = db()) {
-  await run('INSERT INTO audit_logs(id,user_id,action,detail,created_at) VALUES(?,?,?,?,?)',[crypto.randomUUID(),userId,action,JSON.stringify(detail),Date.now()],c);
+  await c.execute(auditStatement(userId,action,detail));
+}
+export function auditStatement(userId:string,action:string,detail:unknown){
+  return {sql:'INSERT INTO audit_logs(id,user_id,action,detail,created_at) VALUES(?,?,?,?,?)',args:[crypto.randomUUID(),userId,action,JSON.stringify(detail),Date.now()]};
 }
 export function demoMode() { return !process.env.VERCEL && process.env.NODE_ENV !== 'production' && process.env.DEMO_MODE === 'true'; }
 export function businessNow() {

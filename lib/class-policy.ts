@@ -1,4 +1,5 @@
 import {leaveKinds,type Rules} from './domain';
+export const MIN_MAKEUP_REASON_LENGTH=4;
 export interface LeaveType {id:string;name:string;enabled:boolean;reasonRequired:boolean;proofRequired:boolean}
 export interface ClassPolicy {
   leaveTypes:LeaveType[];
